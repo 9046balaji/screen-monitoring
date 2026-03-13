@@ -98,18 +98,17 @@ export const checkDopamineLoop = async () => {
 }
 
 // ── AI Life Coach ──
-export const chatWithLifeCoach = async (message) => {
-  if (USE_MOCK) {
-    // using actual fallback if mock is true but we still want a response
-    try {
-      const res = await axios.post(`${BASE_URL}/coach/chat`, { message })
-      return res.data;
-    } catch(err) {
-      return { response: "You are doing fine. Relax." }
+export const chatWithLifeCoach = async (message, history = []) => {
+    if (USE_MOCK) {
+      // using actual fallback if mock is true but we still want a response
+      try {
+        const res = await axios.post(`${BASE_URL}/coach/chat`, { message, history })
+        return res.data;
+      } catch(err) {
+        return { response: "You are doing fine. Relax." }
+      }
     }
-  }
-  const res = await axios.post(`${BASE_URL}/coach/chat`, { message })
-  return res.data
+    const res = await axios.post(`${BASE_URL}/coach/chat`, { message, history })
 }
 
 // ── AI Screen Addiction Therapy (CBT) ──

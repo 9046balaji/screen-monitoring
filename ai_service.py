@@ -127,3 +127,61 @@ Instructions:
             "instructions": "Put the device down, stand up, and practice the technique we just discussed."
         }
     }
+
+def coach_agent_step(user_message: str, chat_history: list = None, screen_time_mins: int = 0) -> str:
+    """
+    Process a message in the Life Coach session using web search context.
+    """
+    search_query = f"Life coaching advice for productivity and wellness: {user_message}"
+    try:
+        from ddgs import DDGS
+        with DDGS() as ddgs:
+            results = list(ddgs.text(search_query, max_results=2))
+            if results:
+                search_context = "\n".join([f"- {r['title']}: {r['body']}" for r in results])
+            else:
+                search_context = "Focus on small positive habits."
+    except Exception as e:
+        search_context = f"Could not perform search: {e}"
+        
+    history_len = len(chat_history) if chat_history else 0
+    formatted_history = ""
+    if chat_history:
+        for msg in chat_history[-4:]:  # Keep last 4 messages
+            role = "Coach" if msg["role"] == "assistant" else "User"
+            # Note: Coach page uses 'text' while therapy uses 'content'
+            text = msg.get("text", msg.get("content", ""))
+            formatted_history += f"{role}: {text}\n"
+
+    # 3. Construct the robust LLM Prompt
+    llm_system_prompt = f"""
+You are an empowering, motivational Life Coach AI.
+The user is working on managing their screen time and digital habits.
+Their current screen time this hour is {screen_time_mins} minutes.
+
+Recent Conversation History:
+{formatted_history}
+
+Current User Message: "{user_message}"
+
+Relevant Real-time Web Advice:
+{search_context}
+
+Instructions:
+1. Encourage the user.
+2. Acknowledge their screen time context.
+3. Suggest a tip based on the Web Advice.
+"""
+
+    # For the Hackathon / Demo, we generate an intelligent simulated answer based on the context:
+    if results:
+        extracted_insight = results[0]['body'][:150] + "..."
+    else:
+        extracted_insight = "mindfulness and building slow momentum."
+        
+    reply_text = (
+        f"Right now I see you've used {screen_time_mins} mins of screen time this hour. "
+        f"Based on what you just said, here's an idea: \"{extracted_insight}\" "
+        f"Let's break the cycle and take a 5 minute reset loop right away. You've got this!"
+    )
+    return reply_text

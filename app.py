@@ -1217,7 +1217,7 @@ def check_anomaly():
 # ── Mood Journal ──────────────────────────────────────
 MOOD_JOURNAL_PATH = os.path.join(os.path.dirname(__file__), 'data', 'mood_journal.json')
 
-from ai_service import analyze_journal, predict_relapse, therapy_start, therapy_agent_step
+from ai_service import analyze_journal, predict_relapse, therapy_start, therapy_agent_step, coach_agent_step
 import uuid
 
 @app.route('/api/analytics', methods=['POST'])
@@ -1281,8 +1281,8 @@ def therapy_respond(session_id):
         messages = json.loads(row['messages']) if row['messages'] else []
         messages.append({"role": "user", "content": user_message})
         
-        # Call AI service
-        agent_reply = therapy_agent_step(session_id, user_message)
+        # Call AI service with chat history
+        agent_reply = therapy_agent_step(session_id, user_message, chat_history=messages[:-1])
         
         messages.append({"role": "assistant", "content": agent_reply.get("reply", "")})
         
@@ -1639,44 +1639,27 @@ def get_dopamine_loop():
 def coach_chat_new():
     try:
         data = request.get_json()
-        user_message = data.get('message', '').lower()
-        
+        user_message = data.get('message', '')
+        chat_history = data.get('history', [])
+
         conn = get_db_connection()
         c = conn.cursor()
         date_str = datetime.now().strftime("%Y-%m-%d")
-        
+
         # Analyze the last hour from hourly_logs
         hour_str = datetime.now().strftime("%H:00")
         c.execute('SELECT seconds FROM hourly_logs WHERE date = ? AND hour_str = ?', (date_str, hour_str))
         hr_row = c.fetchone()
-        
+
         c.execute('SELECT friendly_name, seconds, category FROM usage_logs WHERE date = ? ORDER BY seconds DESC', (date_str,))
         rows = c.fetchall()
-        
         conn.close()
-        
+
         hr_seconds = hr_row['seconds'] if hr_row else 0
-        total_seconds = sum(r['seconds'] for r in rows)
-        hours = total_seconds / 3600
-        
-        response = "I hear you. Let me help you stay on track."
-        
-        if any(word in user_message for word in ["hello", "hi", "hey"]):
-            response = f"Hello! As your digital life coach, I see you've spent {hr_seconds//60} minutes on your devices this past hour. How can I support your goals?"
-        elif any(word in user_message for word in ["help", "addict", "distract", "loop", "doom"]):
-            if rows:
-                top_app = rows[0]
-                response = f"You've been active for {hr_seconds//60} mins this hour. I notice {top_app['friendly_name']} is highly used today. It's okay, building better habits takes time. Try setting a 15-minute focus timer right now."
-            else:
-                response = "Building focus takes time. Try breaking your tasks into manageable Pomodoro sessions."
-        elif "how am i doing" in user_message or "status" in user_message:
-            if hr_seconds < 1800:
-                response = f"You are doing great! Only {hr_seconds//60} minutes of screen time this hour. Keep up the balanced lifestyle!"
-            else:
-                response = f"You've already spent {hr_seconds//60} minutes on screens this hour. It might be a good time for a quick screen-free break."
-        else:
-            response = f"That's a very valid point. Remember, moderation is key. You're currently at {hr_seconds//60} minutes of screen time this hour. I suggest drinking some water and looking at something 20 feet away."
-            
+        screen_time_mins = hr_seconds // 60
+
+        response = coach_agent_step(user_message, chat_history, screen_time_mins)
+
         return jsonify({
             "response": response,
             "timestamp": datetime.utcnow().isoformat()

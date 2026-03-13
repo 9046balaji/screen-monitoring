@@ -21,11 +21,13 @@ export default function Coach() {
 
     const userMessage = input.trim();
     setInput('');
+    // Pass the current messages to the hook as history
     setMessages(prev => [...prev, { role: 'user', text: userMessage }]);
     setIsLoading(true);
 
     try {
-      const { response } = await chatWithLifeCoach(userMessage);
+      // Pass the current messages as history to give the AI context over the conversation
+      const { response } = await chatWithLifeCoach(userMessage, messages);
       setMessages(prev => [...prev, { role: 'assistant', text: response }]);
     } catch (err) {
       setMessages(prev => [...prev, { 
