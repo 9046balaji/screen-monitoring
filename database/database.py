@@ -80,6 +80,36 @@ def init_db():
             UNIQUE(user_id, day)
         )
     ''')
+
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS commitments (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          challenge_id TEXT,
+          title TEXT NOT NULL,
+          description TEXT,
+          start_ts DATETIME NOT NULL,
+          end_ts DATETIME,
+          expected_duration_minutes INT,
+          auto_start_focus BOOLEAN DEFAULT 0,
+          reminder_interval_minutes INT,
+          status TEXT DEFAULT 'active',
+          metadata JSON,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS focus_sessions (
+          id TEXT PRIMARY KEY,
+          commitment_id TEXT,
+          start_ts DATETIME,
+          duration_minutes INT,
+          status TEXT DEFAULT 'scheduled'
+        )
+    ''')
+
     conn.commit()
     conn.close()
 

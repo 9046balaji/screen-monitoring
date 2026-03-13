@@ -1,10 +1,31 @@
 import React, { useEffect, useState } from 'react';
 import { ShieldCheck, ArrowRight, BrainCircuit } from 'lucide-react';
 import { getTherapyPlan } from '../api/digiwell';
+import CommitmentModal from '../components/ui/CommitmentModal';
+import { useCommitment } from '../hooks/useCommitment';
 
 export default function Therapy() {
   const [plan, setPlan] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const { startNewCommitment, activeCommitment, isLoading } = useCommitment();
+
+  const handleStartNow = async () => {
+    await startNewCommitment({
+      title: "Today's CBT Commitment",
+      description: "One hour screen-free block",
+      expected_duration_minutes: 60,
+      auto_start_focus: true,
+      reminder_interval_minutes: 20
+    });
+    setIsModalOpen(false);
+    alert("Commitment started! Focus session is active.");
+  };
+
+  const handleSchedule = () => {
+    setIsModalOpen(false);
+    alert("Scheduling coming soon.");
+  };
 
   useEffect(() => {
     async function fetchPlan() {
@@ -68,10 +89,28 @@ export default function Therapy() {
       <div className="mt-10 bg-indigo-50 border border-indigo-100 p-6 rounded-xl text-center">
         <h3 className="text-lg font-bold text-indigo-800 mb-2">Ready to take control?</h3>
         <p className="text-indigo-600 mb-4">Start applying these steps today. The journey of a thousand miles begins with one step.</p>
-        <button className="px-6 py-3 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition flex items-center gap-2 mx-auto">
-          Start Today's Commitment <ArrowRight className="w-5 h-5" />
-        </button>
+        
+        {activeCommitment ? (
+          <div className="bg-indigo-600 text-white rounded-lg p-4 inline-block font-semibold">
+            🎯 Commitment Active — Focus mode is running
+          </div>
+        ) : (
+          <button 
+            onClick={() => setIsModalOpen(true)}
+            disabled={isLoading}
+            className="px-6 py-3 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition flex items-center gap-2 mx-auto disabled:opacity-50"
+          >
+            Start Today's Commitment <ArrowRight className="w-5 h-5" />
+          </button>
+        )}
       </div>
+      
+      <CommitmentModal 
+        isOpen={isModalOpen} 
+        onClose={() => setIsModalOpen(false)}
+        onStart={handleStartNow}
+        onSchedule={handleSchedule}
+      />
     </div>
   );
 }

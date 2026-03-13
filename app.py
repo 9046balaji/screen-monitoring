@@ -1567,6 +1567,185 @@ def get_therapy_plan():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# ── Commitments ─────────────────────────────────────────
+
+import uuid
+
+@app.route('/api/commitments/start', methods=['POST'])
+def start_commitment():
+    try:
+        data = request.get_json()
+        if not data or 'title' not in data:
+            return jsonify({"error": "Missing title"}), 400
+            
+        commitment_id = str(uuid.uuid4())
+        user_id = data.get('user_id', 'local')
+        challenge_id = data.get('challenge_id')
+        title = data.get('title')
+        description = data.get('description')
+        start_ts = data.get('start_ts', datetime.utcnow().isoformat())
+        expected_duration_minutes = data.get('expected_duration_minutes', 60)
+        
+        if expected_duration_minutes < 0:
+            return jsonify({"error": "Duration cannot be negative"}), 400
+            
+        auto_start_focus = bool(data.get('auto_start_focus', False))
+        reminder_interval_minutes = data.get('reminder_interval_minutes')
+        status = 'active'
+        metadata = json.dumps(data.get('metadata', {}))
+        
+        # Calculate expected_end_ts if start_ts is now
+        # Parse start_ts assuming standard iso format
+        try:
+            start_dt = datetime.fromisoformat(start_ts.replace('Z', '+00:00'))
+            from datetime import timedelta
+            end_dt = start_dt + timedelta(minutes=expected_duration_minutes)
+            end_ts = end_dt.isoformat()
+        except:
+            end_ts = None
+        
+        conn = get_db_connection()
+        c = conn.cursor()
+        
+        c.execute('''
+            INSERT INTO commitments (
+                id, user_id, challenge_id, title, description, start_ts, end_ts,
+                expected_duration_minutes, auto_start_focus, reminder_interval_minutes, status, metadata
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            commitment_id, user_id, challenge_id, title, description, start_ts, end_ts,
+            expected_duration_minutes, int(auto_start_focus), reminder_interval_minutes, status, metadata
+        ))
+        
+        focus_session_created = False
+        if auto_start_focus:
+            session_id = str(uuid.uuid4())
+            c.execute('''
+                INSERT INTO focus_sessions (id, commitment_id, start_ts, duration_minutes, status)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (session_id, commitment_id, start_ts, expected_duration_minutes, 'scheduled'))
+            focus_session_created = True
+            
+            # Write to JSON for agent compatibility
+            focus_data = {
+                "active": False,
+                "session_name": title,
+                "duration_minutes": expected_duration_minutes,
+                "started_at": start_ts,
+                "ends_at": end_ts,
+                "block_list": ["discord.exe", "slack.exe", "WhatsApp.exe", "Telegram.exe", "steam.exe"],
+                "apps_killed": []
+            }
+            try:
+                with open(os.path.join(os.path.dirname(__file__), 'data', 'focus_session.json'), 'w') as f:
+                    json.dump(focus_data, f)
+            except Exception as e:
+                print(f"Error writing focus_session.json: {e}")
+                
+        # Optional: track analytics event
+        c.execute('''
+            INSERT INTO interventions (timestamp, app_name, reason, status)
+            VALUES (?, ?, ?, ?)
+        ''', (datetime.utcnow().isoformat(), 'System', f'Started commitment: {title}', 'completed'))
+            
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            "commitment_id": commitment_id,
+            "status": status,
+            "start_ts": start_ts,
+            "expected_end_ts": end_ts,
+            "focus_session_created": focus_session_created
+        }), 201
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/commitments/<commitment_id>', methods=['GET'])
+def get_commitment(commitment_id):
+    try:
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute('SELECT * FROM commitments WHERE id = ?', (commitment_id,))
+        row = c.fetchone()
+        conn.close()
+        
+        if not row:
+            return jsonify({"error": "Not found"}), 404
+            
+        return jsonify(dict(row))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/commitments', methods=['GET'])
+def get_commitments():
+    try:
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute('SELECT * FROM commitments ORDER BY start_ts DESC')
+        rows = c.fetchall()
+        conn.close()
+        
+        return jsonify([dict(r) for r in rows])
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/commitments/<commitment_id>', methods=['PATCH'])
+def patch_commitment(commitment_id):
+    try:
+        data = request.get_json()
+        status = data.get('status')
+        end_ts = data.get('end_ts')
+        
+        updates = []
+        params = []
+        if status:
+            updates.append("status = ?")
+            params.append(status)
+        if end_ts:
+            updates.append("end_ts = ?")
+            params.append(end_ts)
+            
+        if not updates:
+            return jsonify({"error": "No valid fields to update"}), 400
+            
+        updates.append("updated_at = ?")
+        params.append(datetime.utcnow().isoformat())
+        params.append(commitment_id)
+        
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute(f'UPDATE commitments SET {", ".join(updates)} WHERE id = ?', params)
+        conn.commit()
+        conn.close()
+        
+        return jsonify({"status": "updated"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/commitments/<commitment_id>/complete', methods=['POST'])
+def complete_commitment(commitment_id):
+    try:
+        conn = get_db_connection()
+        c = conn.cursor()
+        end_ts = datetime.utcnow().isoformat()
+        c.execute('''
+            UPDATE commitments SET status = 'completed', end_ts = ?, updated_at = ?
+            WHERE id = ?
+        ''', (end_ts, end_ts, commitment_id))
+        
+        # Mark focus session completed if it exists
+        c.execute('''
+            UPDATE focus_sessions SET status = 'completed' WHERE commitment_id = ?
+        ''', (commitment_id,))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({"status": "completed", "end_ts": end_ts})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

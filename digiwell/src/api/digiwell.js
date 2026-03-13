@@ -260,3 +260,40 @@ export const getAddictionHeatmap = async () => {
   const res = await axios.get(`${BASE_URL}/addiction-heatmap`);
   return res.data;
 }
+
+// ── Commitments API ───────────────────────────────────────
+
+export const startCommitment = async (payload) => {
+  if (USE_MOCK) {
+    return {
+      commitment_id: "mock-123",
+      status: "active",
+      start_ts: new Date().toISOString(),
+      expected_end_ts: new Date(Date.now() + payload.expected_duration_minutes * 60000).toISOString(),
+      focus_session_created: payload.auto_start_focus
+    }
+  }
+  const res = await fetch(`${BASE_URL}/commitments/start`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+    headers: { 'Content-Type': 'application/json' }
+  });
+  if (!res.ok) throw new Error('Failed to start commitment');
+  return res.json();
+}
+
+export const getCommitments = async () => {
+  if (USE_MOCK) return [];
+  const res = await fetch(`${BASE_URL}/commitments`);
+  if (!res.ok) throw new Error('Failed to get commitments');
+  return res.json();
+}
+
+export const completeCommitment = async (id) => {
+  if (USE_MOCK) return { status: 'completed' };
+  const res = await fetch(`${BASE_URL}/commitments/${id}/complete`, {
+    method: 'POST'
+  });
+  if (!res.ok) throw new Error('Failed to complete commitment');
+  return res.json();
+}

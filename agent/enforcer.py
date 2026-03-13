@@ -174,8 +174,44 @@ def check_doomscrolling(app_name, category, seconds_used):
                 pass
 
 
+def poll_focus_sessions():
+    """Poll DB for scheduled focus sessions and start them via focus_mode"""
+    try:
+        conn = get_db_connection()
+        c = conn.cursor()
+        now_ts = datetime.utcnow().isoformat()
+        
+        c.execute('''
+            SELECT id, duration_minutes FROM focus_sessions
+            WHERE status = 'scheduled' AND start_ts <= ?
+        ''', (now_ts,))
+        rows = c.fetchall()
+        
+        for row in rows:
+            # Mark as running
+            c.execute('UPDATE focus_sessions SET status = "running" WHERE id = ?', (row['id'],))
+            conn.commit()
+            
+            # Start focus session using existing logic
+            try:
+                from focus_mode import start_focus_session
+                start_focus_session(duration_minutes=row['duration_minutes'], session_name="Commitment Focus")
+            except Exception as e:
+                print(f"Failed to start focus mode: {e}")
+                
+        conn.close()
+    except Exception as e:
+        print(f"Failed to poll focus sessions: {e}")
+
+_last_poll = 0
 def check_and_enforce(app_name, process_name, seconds_used, category='Other'):
     """Called every second by tracker — checks limits and enforces"""
+    global _last_poll
+    now = time.time()
+    if now - _last_poll > 5:  # Every 5 seconds
+        poll_focus_sessions()
+        _last_poll = now
+        
     check_doomscrolling(app_name, category, seconds_used)
     limits = load_limits()
     if app_name not in limits:

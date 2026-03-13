@@ -158,3 +158,13 @@ DigiWell is a remarkably thorough monolithic project combining standard applicat
 *   Migrating SQLite to a specialized Timeseries Database (like InfluxDB or TimescaleDB) to handle tracking granularity better.
 *   Integrating a local LLM or robust NLP to assess chat logs or typing speeds as secondary heuristic indicators of mood.
 *   Deploying the React frontend via Electron/Tauri to bundle the entire Python backend and desktop background agents into a single cross-platform `.exe` or `.dmg` executable.
+
+
+### Commitments API Endpoints
+* **POST /api/commitments/start**
+  * Description: Starts a new CBT/Detox commitment.
+  * Request Body: \{\
+title\: \Commitment
+1\, \expected_duration_minutes\: 60, \auto_start_focus\: true}\
+  * Response: \{\commitment_id\: \uuid\, \status\: \active\, \focus_session_created\: true}\
+
