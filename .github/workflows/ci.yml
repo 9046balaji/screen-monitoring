@@ -1,4 +1,4 @@
-name: CI Backend
+name: CI/CD
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
     branches: [ main ]
 
 jobs:
-  test:
+  test-backend:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
@@ -22,3 +22,18 @@ jobs:
     - name: Run pytest
       run: |
         pytest -v
+
+  test-frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./digiwell
+    steps:
+    - uses: actions/checkout@v3
+    - name: Use Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18.x'
+    - run: npm ci
+    - run: npm run build
+    - run: npm test
