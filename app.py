@@ -1217,8 +1217,38 @@ def check_anomaly():
 # ── Mood Journal ──────────────────────────────────────
 MOOD_JOURNAL_PATH = os.path.join(os.path.dirname(__file__), 'data', 'mood_journal.json')
 
-from ai_service import analyze_journal
+from ai_service import analyze_journal, predict_relapse
 import datetime
+
+@app.route('/api/predictions/relapse-risk', methods=['GET'])
+def get_relapse_risk():
+    try:
+        user_id = request.args.get('user_id', 'default_user')
+        
+        # In reality, fetch recent features from DB
+        features = {}
+        
+        # Predict using ai_service or loaded model
+        result = predict_relapse(features)
+        
+        risk = result.get('risk', 0.0)
+        top_features = result.get('top_features', [])
+        
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute('''
+            INSERT INTO relapse_predictions (user_id, risk, features)
+            VALUES (?, ?, ?)
+        ''', (user_id, risk, json.dumps(top_features)))
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            "risk": risk,
+            "top_features": top_features
+        }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/mood/analyze-and-save', methods=['POST'])
 def analyze_and_save_mood():

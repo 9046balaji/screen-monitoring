@@ -46,6 +46,16 @@ export const predictProductivity = async (userData) => {
   return res.data
 }
 
+export const getRelapseRisk = async () => {
+  if (USE_MOCK) return { risk: 0.85, top_features: ["Late night (pm)", "Recent negative mood"] };
+  try {
+    const res = await axios.get(`${BASE_URL}/predictions/relapse-risk`);
+    return res.data;
+  } catch (err) {
+    return { risk: 0.0, top_features: [] };
+  }
+}
+
 export const getModelReport = async () => {
   if (USE_MOCK) return mock.modelMetrics
   const res = await axios.get(`${BASE_URL}/model/report`)

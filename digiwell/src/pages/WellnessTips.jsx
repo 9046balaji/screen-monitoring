@@ -2,11 +2,15 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Moon, Target, Brain, CheckCircle2 } from 'lucide-react';
 import Timer2020 from '../components/ui/Timer2020';
+import RelapseTachometer from '../components/charts/RelapseTachometer';
 import toast from 'react-hot-toast';
 import { currentUser, mentalHealthScores as mockMental, productivityData as mockProductivity } from '../data/mockData';
-import { getUserCluster, getRecommendations, getMentalHealthRisk, predictProductivity } from '../api/digiwell';
+import { getUserCluster, getRecommendations, getMentalHealthRisk, predictProductivity, getRelapseRisk } from '../api/digiwell';
+import { useCommitment } from '../hooks/useCommitment';
 
 export default function WellnessTips() {
+  const { startNewCommitment } = useCommitment() || {};
+  const [relapseData, setRelapseData] = useState({ risk: 0, top_features: [] });
   const [streak, setStreak] = useState(() => {
     return parseInt(localStorage.getItem('digiwell_streak') || '0', 10);
   });
@@ -37,6 +41,9 @@ export default function WellnessTips() {
   useEffect(() => {
     async function fetchPersonalizedTips() {
       try {
+        const relapseRes = await getRelapseRisk();
+        if (relapseRes) setRelapseData(relapseRes);
+
         const [segRes, mentalRes, prodRes] = await Promise.allSettled([
           getUserCluster({
             time_spent: 6.3,
@@ -140,8 +147,30 @@ export default function WellnessTips() {
   const mentalRiskScore = mentalRisk?.risk_score || mockMental.riskScore;
   const predictedExam = prodScore?.predicted_exam_score || mockProductivity.examScore;
 
+  const handleStartFocus = async () => {
+    if (startNewCommitment) {
+      await startNewCommitment({
+        title: "Relapse Prevention Block",
+        description: "Emergency focus mode triggered by high doomscroll risk.",
+        expected_duration_minutes: 30,
+        auto_start_focus: true,
+        reminder_interval_minutes: 10
+      });
+      toast.success("Emergency focus mode activated!");
+    } else {
+      toast("Focus mode started (mock)", { icon: '🛡️' });
+    }
+  };
+
   return (
     <div className="flex flex-col gap-8">
+      {/* Relapse / Doomscroll Predictor */}
+      <RelapseTachometer 
+        risk={relapseData.risk} 
+        topFeatures={relapseData.top_features} 
+        onStartFocus={handleStartFocus}
+      />
+
       {/* Persona insight banner */}
       {personaInsight && (
         <motion.div
