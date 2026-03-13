@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "DigiWell Browser Tracker",
+  "version": "1.0",
+  "description": "Tracks browser usage for DigiWell Screen Time Monitoring.",
+  "permissions": [
+    "tabs",
+    "storage",
+    "webNavigation",
+    "alarms"
+  ],
+  "host_permissions": [
+    "http://localhost:5000/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  }
+}

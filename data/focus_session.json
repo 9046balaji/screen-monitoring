@@ -1,0 +1,17 @@
+{
+  "active": true,
+  "session_name": "Deep Work",
+  "duration_minutes": 5,
+  "started_at": "2026-03-13T15:58:55.425923",
+  "ends_at": "2026-03-13T16:03:55.425915",
+  "block_list": [
+    "discord.exe",
+    "slack.exe",
+    "WhatsApp.exe",
+    "Telegram.exe",
+    "steam.exe"
+  ],
+  "apps_killed": [
+    "WhatsApp.Root.exe"
+  ]
+}
