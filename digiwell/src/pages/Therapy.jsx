@@ -1,23 +1,32 @@
 import React, { useEffect, useState } from 'react';
-import { ShieldCheck, ArrowRight, BrainCircuit } from 'lucide-react';
+import { ShieldCheck, ArrowRight, BrainCircuit, MessageCircle } from 'lucide-react';
 import { getTherapyPlan } from '../api/digiwell';
 import CommitmentModal from '../components/ui/CommitmentModal';
+import CBTChat from '../components/therapy/CBTChat';
 import { useCommitment } from '../hooks/useCommitment';
 
 export default function Therapy() {
   const [plan, setPlan] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const { startNewCommitment, activeCommitment, isLoading } = useCommitment();
+  const [showChat, setShowChat] = useState(false);
+  const [suggestedCommitment, setSuggestedCommitment] = useState(null);
+  const { startNewCommitment = async () => {}, activeCommitment = null, isLoading = false } = useCommitment() || {};
+
+  const handleCommitmentRecommended = (comm) => {
+    setSuggestedCommitment(comm);
+    setIsModalOpen(true);
+  };
 
   const handleStartNow = async () => {
-    await startNewCommitment({
+    const details = suggestedCommitment || {
       title: "Today's CBT Commitment",
       description: "One hour screen-free block",
       expected_duration_minutes: 60,
       auto_start_focus: true,
       reminder_interval_minutes: 20
-    });
+    };
+    await startNewCommitment(details);
     setIsModalOpen(false);
     alert("Commitment started! Focus session is active.");
   };
@@ -59,17 +68,31 @@ export default function Therapy() {
 
   return (
     <div className="max-w-4xl mx-auto py-8">
-      <div className="mb-8 flex items-center gap-4">
-        <div className="p-3 bg-teal-100 text-teal-600 rounded-lg">
-          <BrainCircuit className="w-8 h-8" />
+      <div className="mb-8 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <div className="p-3 bg-teal-100 dark:bg-teal-900/50 text-teal-600 dark:text-teal-400 rounded-lg">
+            <BrainCircuit className="w-8 h-8" />
+          </div>
+          <div>
+            <h1 className="text-3xl font-bold text-slate-800 dark:text-slate-100">CBT Action Plan</h1>
+            <p className="text-slate-600 dark:text-slate-400 mt-1">Personalized Cognitive Behavioral Therapy for: <strong>{plan.top_category}</strong></p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-3xl font-bold text-slate-800">CBT Action Plan</h1>
-          <p className="text-slate-600 dark:text-slate-500 mt-1">Personalized Cognitive Behavioral Therapy for: <strong>{plan.top_category}</strong></p>
-        </div>
+        <button 
+          onClick={() => setShowChat(!showChat)}
+          className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg transition-colors font-medium"
+        >
+          <MessageCircle className="w-5 h-5" />
+          {showChat ? 'View Static Plan' : 'Try Interactive CBT'}
+        </button>
       </div>
 
-      <div className="grid gap-6">
+      {showChat ? (
+        <div className="mb-8">
+          <CBTChat onCommitmentRecommended={handleCommitmentRecommended} />
+        </div>
+      ) : (
+        <div className="grid gap-6">
         {plan.cbt_plan.map((step) => (
           <div key={step.step} className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex items-start gap-4 transition-all hover:shadow-md">
             <div className="flex-shrink-0 w-12 h-12 rounded-full bg-teal-50 text-teal-600 flex items-center justify-center font-bold text-xl">
@@ -85,6 +108,7 @@ export default function Therapy() {
           </div>
         ))}
       </div>
+      )}
 
       <div className="mt-10 bg-indigo-50 border border-indigo-100 p-6 rounded-xl text-center">
         <h3 className="text-lg font-bold text-indigo-800 mb-2">Ready to take control?</h3>

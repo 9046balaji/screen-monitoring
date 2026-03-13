@@ -113,6 +113,22 @@ export const chatWithLifeCoach = async (message) => {
 }
 
 // ── AI Screen Addiction Therapy (CBT) ──
+export const startTherapySession = async () => {
+  if (USE_MOCK) return { session_id: "mock-123", messages: [{role: "assistant", content: "Hi! How can I help you today?"}] };
+  const res = await axios.post(`${BASE_URL}/therapy/session`);
+  return res.data;
+}
+
+export const respondTherapySession = async (sessionId, message) => {
+  if (USE_MOCK) return { 
+    messages: [], 
+    agent_reply: "Let's take a quick break.", 
+    suggested_commitment: { title: "Short Break", duration_minutes: 15 } 
+  };
+  const res = await axios.post(`${BASE_URL}/therapy/session/${sessionId}/respond`, { message });
+  return res.data;
+}
+
 export const getTherapyPlan = async () => {
   const res = await axios.get(`${BASE_URL}/therapy/plan`)
   return res.data

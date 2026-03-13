@@ -1217,8 +1217,74 @@ def check_anomaly():
 # ── Mood Journal ──────────────────────────────────────
 MOOD_JOURNAL_PATH = os.path.join(os.path.dirname(__file__), 'data', 'mood_journal.json')
 
-from ai_service import analyze_journal, predict_relapse
+from ai_service import analyze_journal, predict_relapse, therapy_start, therapy_agent_step
 import datetime
+import uuid
+
+@app.route('/api/therapy/session', methods=['POST'])
+def create_therapy_session():
+    try:
+        user_id = request.json.get('user_id', 'default_user') if request.json else 'default_user'
+        session_id = str(uuid.uuid4())
+        
+        initial_msg = therapy_start()
+        messages = [{"role": "assistant", "content": initial_msg.get("reply", "Hello. Let's begin.")}]
+        
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute('''
+            INSERT INTO therapy_sessions (id, user_id, messages, outcome)
+            VALUES (?, ?, ?, ?)
+        ''', (session_id, user_id, json.dumps(messages), json.dumps({})))
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            "session_id": session_id,
+            "messages": messages
+        }), 201
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/therapy/session/<session_id>/respond', methods=['POST'])
+def therapy_respond(session_id):
+    try:
+        user_message = request.json.get('message', '')
+        
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute('SELECT messages FROM therapy_sessions WHERE id = ?', (session_id,))
+        row = c.fetchone()
+        if not row:
+            return jsonify({'error': 'Session not found'}), 404
+            
+        messages = json.loads(row['messages']) if row['messages'] else []
+        messages.append({"role": "user", "content": user_message})
+        
+        # Call AI service
+        agent_reply = therapy_agent_step(session_id, user_message)
+        
+        messages.append({"role": "assistant", "content": agent_reply.get("reply", "")})
+        
+        c.execute('''
+            UPDATE therapy_sessions 
+            SET messages = ?, outcome = ?
+            WHERE id = ?
+        ''', (
+            json.dumps(messages), 
+            json.dumps(agent_reply.get("suggested_commitment", {})),
+            session_id
+        ))
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            "messages": messages,
+            "agent_reply": agent_reply.get("reply", ""),
+            "suggested_commitment": agent_reply.get("suggested_commitment", None)
+        }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/predictions/relapse-risk', methods=['GET'])
 def get_relapse_risk():
