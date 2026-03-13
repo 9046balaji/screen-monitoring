@@ -1291,10 +1291,11 @@ def get_relapse_risk():
         user_id = request.args.get('user_id', 'default_user')
         
         # In reality, fetch recent features from DB
-        features = {}
+        features = {"user_id": user_id}
+        features_json = json.dumps(features, sort_keys=True)
         
         # Predict using ai_service or loaded model
-        result = predict_relapse(features)
+        result = predict_relapse(features_json)
         
         risk = result.get('risk', 0.0)
         top_features = result.get('top_features', [])

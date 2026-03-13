@@ -16,3 +16,4 @@ pydantic
 pytest
 pytest-flask
 requests
+cachetools==5.3.3

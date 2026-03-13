@@ -1,6 +1,23 @@
 import json
+import os
+import pickle
+from cachetools import cached, TTLCache
 
-# Mock AI Service wrapper for deterministic outputs
+# In-memory LRU cache for predictions (max 100 items, ttl 30s)
+prediction_cache = TTLCache(maxsize=100, ttl=30)
+
+# Production model loading at startup
+RELAPSE_MODEL = None
+models_dir = os.path.join(os.path.dirname(__file__), 'models')
+model_path = os.path.join(models_dir, 'relapse_model.pkl')
+
+try:
+    if os.path.exists(model_path):
+        with open(model_path, 'rb') as f:
+            RELAPSE_MODEL = pickle.load(f)
+        print("Successfully loaded relapse_model.pkl at startup.")
+except Exception as e:
+    print(f"Warning: Could not load relapse_model.pkl: {e}")
 
 def analyze_journal(text: str, context: dict = None) -> dict:
     """
@@ -17,10 +34,16 @@ def analyze_journal(text: str, context: dict = None) -> dict:
         }
     }
 
-def predict_relapse(features: dict) -> dict:
+@cached(prediction_cache)
+def predict_relapse(features_json: str) -> dict:
     """
     Returns a mock risk prediction of doomscrolling/relapse.
+    'features_json' is passed as string to make it hashable for the cache.
     """
+    if RELAPSE_MODEL:
+        # Features would be extracted here and passed to the model
+        pass
+        
     return {
         "risk": 0.85,  # High risk mock
         "top_features": ["Late night (pm)", "Recent negative mood", "Long unused focus mode"]
