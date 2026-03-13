@@ -12,12 +12,16 @@ import FocusMode from './pages/FocusMode';
 import Reports from './pages/Reports';
 import Coach from './pages/Coach';
 import MoodJournal from './pages/MoodJournal';
-import DetoxChallenge from './pages/DetoxChallenge';
-import use2020Timer from './hooks/use2020Timer'; // Feature 4 hook
+import DetoxChallenge from './pages/DetoxChallenge.jsx';
+import Therapy from './pages/Therapy.jsx';
+import InterventionPopup from './components/ui/InterventionPopup.jsx';
+import use2020Timer from './hooks/use2020Timer.js'; // Feature 4 hook
+import useDopamineDetector from './hooks/useDopamineDetector'; // Feature 1 hook
 
 function AppContent() {
   // Activate global 20-20-20 rule timer
   use2020Timer();
+  useDopamineDetector();
 
   return (
     <div className="flex min-h-screen bg-base text-white">
@@ -38,9 +42,11 @@ function AppContent() {
             <Route path="/coach" element={<Coach />} />
             <Route path="/journal" element={<MoodJournal />} />
             <Route path="/detox" element={<DetoxChallenge />} />
+            <Route path="/therapy" element={<Therapy />} />
           </Routes>
         </main>
       </div>
+      <InterventionPopup />
     </div>
   );
 }

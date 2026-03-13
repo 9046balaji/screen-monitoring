@@ -81,6 +81,33 @@ export const startPomodoro   = (cfg)  => axios.post(`${BASE_URL}/pomodoro/start`
 export const stopPomodoro    = ()     => axios.post(`${BASE_URL}/pomodoro/stop`).then(r => r.data)
 export const getPomodoroState= ()     => axios.get(`${BASE_URL}/pomodoro/state`).then(r => r.data)
 
+// ── Dopamine Loop Detector ──
+export const checkDopamineLoop = async () => {
+  const res = await axios.get(`${BASE_URL}/dopamine-loop`)
+  return res.data
+}
+
+// ── AI Life Coach ──
+export const chatWithLifeCoach = async (message) => {
+  if (USE_MOCK) {
+    // using actual fallback if mock is true but we still want a response
+    try {
+      const res = await axios.post(`${BASE_URL}/coach/chat`, { message })
+      return res.data;
+    } catch(err) {
+      return { response: "You are doing fine. Relax." }
+    }
+  }
+  const res = await axios.post(`${BASE_URL}/coach/chat`, { message })
+  return res.data
+}
+
+// ── AI Screen Addiction Therapy (CBT) ──
+export const getTherapyPlan = async () => {
+  const res = await axios.get(`${BASE_URL}/therapy/plan`)
+  return res.data
+}
+
 // ── Reports ──
 export const downloadDailyReport  = () => window.open(`${BASE_URL}/reports/daily`, '_blank')
 export const downloadWeeklyReport = () => window.open(`${BASE_URL}/reports/weekly`, '_blank')
@@ -166,7 +193,7 @@ export const getDigitalTwinSimulation = async (data) => {
 // ── Anomaly Detection & Mood Journal ──
 export const checkAnomaly = async (timeSpent) => {
   if (USE_MOCK) return { is_anomaly: timeSpent > 300, risk_score: 0.8 }
-  const res = await axios.post(`${BASE_URL}/predict/anomaly`, { time_spent: timeSpent })
+  const res = await axios.post(`${BASE_URL}/anomaly`, { time_spent: timeSpent })
   return res.data
 }
 

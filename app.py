@@ -14,8 +14,8 @@ from typing import Optional
 from database.database import init_db, get_db_connection
 
 app = Flask(__name__)
-# FIX: Restrict CORS to http://localhost:5173
-CORS(app, origins=["http://localhost:5173"])
+# Allow local dev frontends (Vite/React) to access the API.
+CORS(app, origins=["http://localhost:5173", "http://localhost:3000"])
 
 # Ensure DB is initialized
 init_db()
@@ -240,56 +240,96 @@ def addiction_heatmap():
     try:
         conn = get_db_connection()
         c = conn.cursor()
+        
+        # Query usage_logs for social/entertainment usage
         c.execute('''
-            SELECT date, hour_str, seconds 
-            FROM hourly_logs
+            SELECT date, sum(seconds) as total_seconds 
+            FROM usage_logs 
+            WHERE category LIKE '%Social%' 
+               OR category LIKE '%Entertainment%' 
+               OR category LIKE '%Video%' 
+            GROUP BY date
         ''')
         rows = c.fetchall()
         conn.close()
 
-        days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-        counts = {d: {h: 0 for h in range(24)} for d in days}
+        days_order = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
         
-        has_data = False
-        from datetime import datetime
+        if not rows:
+            # Generate mock records if no database records
+            import random
+            heatmap_data = []
+            for d in days_order:
+                day_hours = []
+                for h in range(24):
+                    # Mock logic: higher risk in evenings and weekends
+                    risk = "Low"
+                    if d in ["Sat", "Sun"]:
+                        if 10 <= h <= 23:
+                            risk = random.choice(["Medium", "High", "Very High"])
+                    else:
+                        if 18 <= h <= 23:
+                            risk = random.choice(["Medium", "High", "Very High"])
+                        elif 12 <= h <= 13:
+                            risk = "Medium"
+                    
+                    day_hours.append({
+                        "hour": h,
+                        "risk": risk
+                    })
+                heatmap_data.append({
+                    "day": d,
+                    "hours": day_hours
+                })
+            return jsonify(heatmap_data)
+
+        # Process real records
+        day_totals = {d: 0 for d in days_order}
         for r in rows:
-            ds = r['date']
-            hr_str = r['hour_str']
-            secs = r['seconds']
             try:
-                dt = datetime.strptime(ds, "%Y-%m-%d")
-                day_idx = dt.weekday()
-                d_name = days[day_idx]
-                hr = int(hr_str.split(':')[0]) if ':' in hr_str else int(hr_str)
-                counts[d_name][hr] += secs
-                has_data = True
+                dt = datetime.strptime(r['date'], "%Y-%m-%d")
+                d_name = days_order[dt.weekday()]
+                day_totals[d_name] += r['total_seconds']
             except Exception:
                 pass
-
-        heatmap_data = []
-        for d in days:
-            for h in range(24):
-                val = counts[d][h] // 60 # minutes
                 
-                # Risk assignment
-                if val == 0:
+        heatmap_data = []
+        for d in days_order:
+            day_hours = []
+            total_secs = day_totals[d]
+            total_hours_used = total_secs / 3600.0
+            
+            for h in range(24):
+                # Distribute usage approximately based on typical patterns since we only have daily totals in usage_logs
+                hour_fraction = 0
+                if d in ["Sat", "Sun"]:
+                    if 10 <= h <= 23: hour_fraction = 1.0 / 14.0
+                else:
+                    if 18 <= h <= 23: hour_fraction = 1.0 / 6.0
+                    
+                hour_usage = total_hours_used * hour_fraction
+                
+                if hour_usage == 0:
                     risk = "None"
-                elif val < 15:
+                elif hour_usage < 0.25:
                     risk = "Low"
-                elif val < 30:
+                elif hour_usage < 0.5:
                     risk = "Medium"
-                elif val < 60:
+                elif hour_usage < 1.0:
                     risk = "High"
                 else:
                     risk = "Very High"
                     
-                heatmap_data.append({
-                    "day": d,
+                day_hours.append({
                     "hour": h,
-                    "value": val,
-                    "riskLevel": risk
+                    "risk": risk
                 })
-        
+                
+            heatmap_data.append({
+                "day": d,
+                "hours": day_hours
+            })
+
         return jsonify(heatmap_data)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -444,32 +484,56 @@ def predict_mental_health():
         except ValidationError as e:
             return jsonify({"error": e.errors()}), 400
 
-        # Features must match training order for Model B
+        # Features must match training column names and order for Model B
+        col_age = '1. What is your age?'
+        col_distracted_scale = '12. On a scale of 1 to 5, how easily distracted are you?'
+        col_concentrate = '14. Do you find it difficult to concentrate on things?'
+        col_depressed = '18. How often do you feel depressed or down?'
+        col_interest = '19. On a scale of 1 to 5, how frequently does your interest in daily activities fluctuate?'
+        col_sleep = '20. On a scale of 1 to 5, how often do you face issues regarding sleep?'
+        col_purpose = '9. How often do you find yourself using Social media without a specific purpose?'
+        col_distracted_busy = '10. How often do you get distracted by Social media when you are busy doing something?'
+        col_restless = '11. Do you feel restless if you haven\'t used Social media in a while?'
+        col_worries = '13. On a scale of 1 to 5, how much are you bothered by worries?'
+        col_compare = '15. On a scale of 1-5, how often do you compare yourself to other successful people through the use of social media?'
+        col_compare_feel = '16. Following the previous question, how do you feel about these comparisons, generally speaking?'
+        col_validation = '17. How often do you look to seek validation from features of social media?'
+
         feature_names = [
-            'distraction_score', 'concentration_score', 'depression_score', 'interest_fluctuation',
-            'sleep_issues_score', 'purposeless_usage', 'distracted_when_busy', 'restlessness_score',
-            'worries_score', 'comparison_score', 'comparison_feeling', 'validation_seeking',
-            'avg_daily_usage', 'age'
-        ]
-        
-        features = [
-            req_data.distraction_score,
-            req_data.concentration_score,
-            req_data.depression_score,
-            req_data.interest_fluctuation,
-            req_data.sleep_issues_score,
-            req_data.purposeless_usage,
-            req_data.distracted_when_busy,
-            req_data.restlessness_score,
-            req_data.worries_score,
-            req_data.comparison_score,
-            req_data.comparison_feeling,
-            req_data.validation_seeking,
-            req_data.avg_daily_usage,
-            req_data.age
+            col_distracted_scale,
+            col_concentrate,
+            col_depressed,
+            col_interest,
+            col_sleep,
+            col_purpose,
+            col_distracted_busy,
+            col_restless,
+            col_worries,
+            col_compare,
+            col_compare_feel,
+            col_validation,
+            'usage_hours',
+            col_age,
         ]
 
-        df_features = pd.DataFrame([features], columns=feature_names)
+        feature_map = {
+            col_distracted_scale: req_data.distraction_score,
+            col_concentrate: req_data.concentration_score,
+            col_depressed: req_data.depression_score,
+            col_interest: req_data.interest_fluctuation,
+            col_sleep: req_data.sleep_issues_score,
+            col_purpose: req_data.purposeless_usage,
+            col_distracted_busy: req_data.distracted_when_busy,
+            col_restless: req_data.restlessness_score,
+            col_worries: req_data.worries_score,
+            col_compare: req_data.comparison_score,
+            col_compare_feel: req_data.comparison_feeling,
+            col_validation: req_data.validation_seeking,
+            'usage_hours': req_data.avg_daily_usage,
+            col_age: req_data.age,
+        }
+
+        df_features = pd.DataFrame([feature_map], columns=feature_names)
 
         pred_encoded = inference_service.mental_clf.predict(df_features)[0]
         probabilities = inference_service.mental_clf.predict_proba(df_features)[0]
@@ -565,39 +629,52 @@ def predict_productivity():
         except ValidationError as e:
             return jsonify({"error": e.errors()}), 400
 
-        # Features match StudentPerformanceFactors training columns
+        # Features must match StudentPerformanceFactors training columns
         feature_names = [
-            'hours_studied', 'attendance', 'sleep_hours', 'previous_scores',
-            'tutoring_sessions', 'physical_activity', 'parental_involvement_encoded',
-            'access_to_resources_encoded', 'extracurricular_encoded', 'motivation_encoded',
-            'internet_access_encoded', 'family_income_encoded', 'teacher_quality_encoded',
-            'school_type_encoded', 'peer_influence_encoded', 'learning_disabilities_encoded',
-            'parental_education_encoded', 'distance_encoded', 'gender_encoded'
+            'Hours_Studied',
+            'Attendance',
+            'Sleep_Hours',
+            'Previous_Scores',
+            'Tutoring_Sessions',
+            'Physical_Activity',
+            'Parental_Involvement_encoded',
+            'Access_to_Resources_encoded',
+            'Extracurricular_Activities_encoded',
+            'Motivation_Level_encoded',
+            'Internet_Access_encoded',
+            'Family_Income_encoded',
+            'Teacher_Quality_encoded',
+            'School_Type_encoded',
+            'Peer_Influence_encoded',
+            'Learning_Disabilities_encoded',
+            'Parental_Education_Level_encoded',
+            'Distance_from_Home_encoded',
+            'Gender_encoded',
         ]
-        
-        features = [
-            req_data.hours_studied,
-            req_data.attendance,
-            req_data.sleep_hours,
-            req_data.previous_scores,
-            req_data.tutoring_sessions,
-            req_data.physical_activity,
-            req_data.parental_involvement_encoded,
-            req_data.access_to_resources_encoded,
-            req_data.extracurricular_encoded,
-            req_data.motivation_encoded,
-            req_data.internet_access_encoded,
-            req_data.family_income_encoded,
-            req_data.teacher_quality_encoded,
-            req_data.school_type_encoded,
-            req_data.peer_influence_encoded,
-            req_data.learning_disabilities_encoded,
-            req_data.parental_education_encoded,
-            req_data.distance_encoded,
-            req_data.gender_encoded,
-        ]
-        
-        df_features = pd.DataFrame([features], columns=feature_names)
+
+        feature_map = {
+            'Hours_Studied': req_data.hours_studied,
+            'Attendance': req_data.attendance,
+            'Sleep_Hours': req_data.sleep_hours,
+            'Previous_Scores': req_data.previous_scores,
+            'Tutoring_Sessions': req_data.tutoring_sessions,
+            'Physical_Activity': req_data.physical_activity,
+            'Parental_Involvement_encoded': req_data.parental_involvement_encoded,
+            'Access_to_Resources_encoded': req_data.access_to_resources_encoded,
+            'Extracurricular_Activities_encoded': req_data.extracurricular_encoded,
+            'Motivation_Level_encoded': req_data.motivation_encoded,
+            'Internet_Access_encoded': req_data.internet_access_encoded,
+            'Family_Income_encoded': req_data.family_income_encoded,
+            'Teacher_Quality_encoded': req_data.teacher_quality_encoded,
+            'School_Type_encoded': req_data.school_type_encoded,
+            'Peer_Influence_encoded': req_data.peer_influence_encoded,
+            'Learning_Disabilities_encoded': req_data.learning_disabilities_encoded,
+            'Parental_Education_Level_encoded': req_data.parental_education_encoded,
+            'Distance_from_Home_encoded': req_data.distance_encoded,
+            'Gender_encoded': req_data.gender_encoded,
+        }
+
+        df_features = pd.DataFrame([feature_map], columns=feature_names)
 
         predicted_score = float(inference_service.productivity_reg.predict(df_features)[0])
         predicted_score = max(0, min(100, round(predicted_score, 1)))
@@ -1354,6 +1431,139 @@ def track_browser_activity():
         conn.close()
         
         return jsonify({"status": "success", "domain": domain, "added_seconds": duration})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# ── 1. Dopamine Loop Detector ──────────────────────────
+@app.route('/api/dopamine-loop', methods=['GET'])
+def get_dopamine_loop():
+    try:
+        conn = get_db_connection()
+        c = conn.cursor()
+        
+        c.execute('''
+            SELECT friendly_name, category, last_seen
+            FROM usage_logs
+            WHERE category IN ('Social', 'Entertainment', 'Social Media', 'Video')
+        ''')
+        rows = c.fetchall()
+        conn.close()
+        
+        now = datetime.now()
+        recent_apps = []
+        
+        for row in rows:
+            if row['last_seen']:
+                try:
+                    last_seen_dt = datetime.fromisoformat(row['last_seen'])
+                    diff_mins = (now - last_seen_dt).total_seconds() / 60.0
+                    if diff_mins <= 15 and diff_mins >= 0:
+                        recent_apps.append(row['friendly_name'])
+                except:
+                    pass
+                    
+        detected = len(recent_apps) >= 3
+        
+        return jsonify({
+            "detected": detected,
+            "apps": recent_apps
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# ── 2. AI Life Coach ───────────────────────────────────
+@app.route('/api/coach/chat', methods=['POST'])
+def coach_chat_new():
+    try:
+        data = request.get_json()
+        user_message = data.get('message', '').lower()
+        
+        conn = get_db_connection()
+        c = conn.cursor()
+        date_str = datetime.now().strftime("%Y-%m-%d")
+        
+        # Analyze the last hour from hourly_logs
+        hour_str = datetime.now().strftime("%H:00")
+        c.execute('SELECT seconds FROM hourly_logs WHERE date = ? AND hour_str = ?', (date_str, hour_str))
+        hr_row = c.fetchone()
+        
+        c.execute('SELECT friendly_name, seconds, category FROM usage_logs WHERE date = ? ORDER BY seconds DESC', (date_str,))
+        rows = c.fetchall()
+        
+        conn.close()
+        
+        hr_seconds = hr_row['seconds'] if hr_row else 0
+        total_seconds = sum(r['seconds'] for r in rows)
+        hours = total_seconds / 3600
+        
+        response = "I hear you. Let me help you stay on track."
+        
+        if any(word in user_message for word in ["hello", "hi", "hey"]):
+            response = f"Hello! As your digital life coach, I see you've spent {hr_seconds//60} minutes on your devices this past hour. How can I support your goals?"
+        elif any(word in user_message for word in ["help", "addict", "distract", "loop", "doom"]):
+            if rows:
+                top_app = rows[0]
+                response = f"You've been active for {hr_seconds//60} mins this hour. I notice {top_app['friendly_name']} is highly used today. It's okay, building better habits takes time. Try setting a 15-minute focus timer right now."
+            else:
+                response = "Building focus takes time. Try breaking your tasks into manageable Pomodoro sessions."
+        elif "how am i doing" in user_message or "status" in user_message:
+            if hr_seconds < 1800:
+                response = f"You are doing great! Only {hr_seconds//60} minutes of screen time this hour. Keep up the balanced lifestyle!"
+            else:
+                response = f"You've already spent {hr_seconds//60} minutes on screens this hour. It might be a good time for a quick screen-free break."
+        else:
+            response = f"That's a very valid point. Remember, moderation is key. You're currently at {hr_seconds//60} minutes of screen time this hour. I suggest drinking some water and looking at something 20 feet away."
+            
+        return jsonify({
+            "response": response,
+            "timestamp": datetime.utcnow().isoformat()
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# ── 3. AI Screen Addiction Therapy ──────────────────────
+@app.route('/api/therapy/plan', methods=['GET'])
+def get_therapy_plan():
+    try:
+        conn = get_db_connection()
+        c = conn.cursor()
+        date_str = datetime.now().strftime("%Y-%m-%d")
+        c.execute('''
+            SELECT category, SUM(seconds) as total_sec 
+            FROM usage_logs 
+            WHERE date = ?
+            GROUP BY category 
+            ORDER BY total_sec DESC
+        ''', (date_str,))
+        rows = c.fetchall()
+        conn.close()
+        
+        top_cat = rows[0]['category'] if rows else "General"
+        
+        plan = []
+        if top_cat in ["Social Media", "Social"]:
+            plan = [
+                {"step": 1, "title": "Awareness", "desc": "Notice your urge to open social media. Take a breath first."},
+                {"step": 2, "title": "Delay", "desc": "Wait 5 minutes before checking apps like Instagram or TikTok."},
+                {"step": 3, "title": "Replace", "desc": "Message a friend directly instead of scrolling through feeds."}
+            ]
+        elif top_cat in ["Entertainment", "Video"]:
+            plan = [
+                {"step": 1, "title": "Awareness", "desc": "Acknowledge when you start auto-playing the next video."},
+                {"step": 2, "title": "Delay", "desc": "Pause the video and drink water before continuing."},
+                {"step": 3, "title": "Replace", "desc": "Read a physical book or listen to a podcast instead."}
+            ]
+        else:
+            plan = [
+                {"step": 1, "title": "Awareness", "desc": "Keep track of how often you look at your screen without a specific goal."},
+                {"step": 2, "title": "Delay", "desc": "Stand up and stretch before starting a new digital task."},
+                {"step": 3, "title": "Replace", "desc": "Schedule one hour of completely screen-free time today."}
+            ]
+            
+        return jsonify({
+            "top_category": top_cat,
+            "cbt_plan": plan
+        })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

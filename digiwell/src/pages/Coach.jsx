@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { Send, Bot, User, Sparkles } from 'lucide-react';
-import { chatWithDigiWell } from '../api/digiwell';
+import { chatWithLifeCoach } from '../api/digiwell';
 
 export default function Coach() {
   const [messages, setMessages] = useState([
@@ -25,12 +25,12 @@ export default function Coach() {
     setIsLoading(true);
 
     try {
-      const { response } = await chatWithDigiWell(userMessage);
+      const { response } = await chatWithLifeCoach(userMessage);
       setMessages(prev => [...prev, { role: 'assistant', text: response }]);
     } catch (err) {
       setMessages(prev => [...prev, { 
         role: 'assistant', 
-        text: "Sorry, I ran into an issue connecting to the AI. Ensure the Flask server and local Ollama are running." 
+        text: "Sorry, I ran into an issue connecting to the AI. Ensure the Flask server is running." 
       }]);
     } finally {
       setIsLoading(false);

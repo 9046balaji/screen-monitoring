@@ -18,9 +18,9 @@ const getRiskColor = (riskLevel) => {
 
 const formatHour = (h) => {
   if (h === 0) return '12a';
-  if (h < 12) return ${h}a;
+  if (h < 12) return `${h}a`;
   if (h === 12) return '12p';
-  return ${h - 12}p;
+  return `${h - 12}p`;
 };
 
 export default function AddictionHeatmap({ delay = 0 }) {
@@ -55,7 +55,7 @@ export default function AddictionHeatmap({ delay = 0 }) {
           {/* Header row: hour labels */}
           <div />
           {HOURS.map(h => (
-            <div key={hdr-} className="text-center text-muted" style={{ fontSize: '10px', paddingBottom: '4px' }}>
+            <div key={`hdr-${h}`} className="text-center text-muted" style={{ fontSize: '10px', paddingBottom: '4px' }}>
               {h % 3 === 0 ? formatHour(h) : ''}
             </div>
           ))}
@@ -73,7 +73,7 @@ export default function AddictionHeatmap({ delay = 0 }) {
                 
                 return (
                   <div
-                    key={${day}-}
+                    key={`${day}-${h}`}
                     onMouseEnter={() => setTooltip({ day, hour: h, risk: riskLevel, value: val })}
                     onMouseLeave={() => setTooltip(null)}
                     style={{
