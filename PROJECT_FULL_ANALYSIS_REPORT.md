@@ -62,7 +62,7 @@ The `src/pages/` directory outlines a comprehensive suite of views:
 6.  **MoodJournal.jsx**: Integration mapping screen time against self-reported user moods.
 7.  **Predictions.jsx**: The visual interface for evaluating burnout predictions and mental health risks.
 8.  **DetoxChallenge.jsx**: Gamification tracking consecutive successful adherence to usage bounds.
-9.  **WellnessTips.jsx & Profile.jsx**: User settings, demographics inputs (driving ML), and static recommendations.
+9.  **WellnessTips.jsx & Profile.jsx**: User settings, demographics inputs (driving ML), report downloads, and daily snapshot widgets.
 
 ## 7. Frontend Components & Hooks
 To support the extensive pages, the frontend employs domain-specific hooks and components:
@@ -77,7 +77,7 @@ To support the extensive pages, the frontend employs domain-specific hooks and c
 ## 8. Backend Architecture (Python/Flask)
 The core backend is driven by **Flask** (`app.py`), wrapped with PyDantic for rigid schema validation (e.g., `UsagePredictSchema`, `ProductivityPredictSchema`). The server exposes REST API endpoints consumed by the frontend and browser extension.
 *   **InferenceService**: ML models are abstracted into an `InferenceService` singleton upon boot. This prevents model reloading latency, ensuring high-throughput inference for real-time requests.
-*   **CORS Configuration**: Restricts access rigidly to `http://localhost:5173` (the Vite dev server).
+*   **CORS Configuration**: Allows local dev frontends (`http://localhost:5173`, `http://localhost:3000`).
 *   Data parsing leans heavily on Pandas to transform incoming JSON payloads into structures compatible with the scikit-learn preprocessing pipelines.
 
 ## 9. Agents & Background Services
@@ -131,14 +131,14 @@ Located in `browser_extension/`, the `manifest.json` and `background.js` constru
 
 ## 15. Backend API Surface (Selected)
 The Flask API is extensive; below are the major grouped routes consumed by the UI, agents, and extension:
-*   **Health/Meta:** `/api/health`, `/api/model-report`
-*   **Usage + Analytics:** `/api/usage-log`, `/api/usage-analytics`, `/api/weekly-analytics`, `/api/app-usage`, `/api/addiction-heatmap`
-*   **Predictions:** `/api/predict/usage`, `/api/predict/mental-health`, `/api/predict/productivity`, `/api/predict/burnout`
-*   **Interventions:** `/api/intervention`, `/api/doom-detection`, `/api/detox-challenge`
-*   **Focus + Pomodoro:** `/api/focus/start`, `/api/focus/stop`, `/api/pomodoro/start`, `/api/pomodoro/stop`
-*   **Wellness + Journal:** `/api/wellness-score`, `/api/mood-journal`, `/api/daily-reflection`
-*   **Reports + Coach:** `/api/reports/generate`, `/api/coach`, `/api/therapy-plan`
-*   **Tracker Ingestion:** `/api/tracker/desktop`, `/api/tracker/browser`
+*   **Health/Meta:** `/api/health`, `/api/model/report`
+*   **Usage + Analytics:** `/api/tracker/live`, `/api/analytics/weekly`, `/api/addiction-heatmap`, `/api/productivity-score`
+*   **Predictions:** `/api/predict/usage`, `/api/predict/mental_health`, `/api/predict/productivity`, `/api/predict/burnout`, `/api/predict/realtime`, `/api/predict/simulation`, `/api/anomaly`
+*   **Interventions:** `/api/interventions`, `/api/interventions/<id>`, `/api/focus/recommend`
+*   **Focus + Pomodoro:** `/api/focus/start`, `/api/focus/stop`, `/api/focus/status`, `/api/pomodoro/start`, `/api/pomodoro/stop`, `/api/pomodoro/state`
+*   **Wellness + Journal:** `/api/wellness-score`, `/api/mood`, `/api/daily-reflection`, `/api/dopamine-loop`
+*   **Reports + Coach:** `/api/reports/daily`, `/api/reports/weekly`, `/api/chat`, `/api/coach/chat`, `/api/therapy/plan`
+*   **Tracker Ingestion:** `/api/tracker/browser`
 
 ## 16. Feature Summary Table
 | Area | Feature | Primary Components | Notes |
@@ -150,7 +150,7 @@ The Flask API is extensive; below are the major grouped routes consumed by the U
 | Interventions | Doomscroll detection | `enforcer.py`, `/api/doom-detection` | Blocking overlays and event logs |
 | Focus | Pomodoro + focus mode | `pomodoro.py`, `focus_mode.py` | Session timers and enforced blocking |
 | Wellness | Mood journal + tips | `MoodJournal.jsx`, `/api/mood-journal` | User self-reporting and insights |
-| Reporting | PDF reports | `reporter.py`, `/api/reports/generate` | Weekly and daily summaries |
+| Reporting | PDF reports + snapshot widgets | `reporter.py`, `/api/reports/daily`, `/api/reports/weekly`, `Profile.jsx` | Daily/weekly exports and in-profile snapshot |
 
 ## 17. Conclusion & Future Enhancements
 DigiWell is a remarkably thorough monolithic project combining standard application tracking with advanced predictive heuristics. 

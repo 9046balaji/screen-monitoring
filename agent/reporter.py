@@ -9,6 +9,8 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 
 LOG_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'usage_log.json')
 REPORTS_DIR = os.path.join(os.path.dirname(__file__), '..', 'data', 'reports')
+MOOD_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'mood_journal.json')
+FOCUS_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'focus_session.json')
 
 DARK_BG   = colors.HexColor('#0F172A')
 PRIMARY   = colors.HexColor('#6366F1')
@@ -35,6 +37,23 @@ def _generate_report(period='daily'):
             data = json.load(f)
     except Exception:
         return {"error": "Failed to load usage data"}
+        
+    # Load extra data sources
+    mood_data = []
+    if os.path.exists(MOOD_PATH):
+        try:
+            with open(MOOD_PATH) as f:
+                mood_data = json.load(f)
+        except Exception:
+            pass
+            
+    focus_data = {}
+    if os.path.exists(FOCUS_PATH):
+        try:
+            with open(FOCUS_PATH) as f:
+                focus_data = json.load(f)
+        except Exception:
+            pass
 
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     filename = f'DigiWell_{period.capitalize()}_Report_{timestamp}.pdf'
@@ -121,6 +140,36 @@ def _generate_report(period='daily'):
         story.append(Paragraph('No app usage recorded yet.', body_style))
     story.append(Spacer(1, 24))
 
+    # Focus & Productivity Section
+    if focus_data:
+        story.append(Paragraph('🎯 Focus & Productivity', h2_style))
+        session_name = focus_data.get('session_name', 'Deep Work')
+        duration = focus_data.get('duration_minutes', 0)
+        apps_killed = len(focus_data.get('apps_killed', []))
+        
+        focus_lines = [
+            f'• <b>Last Focus Session:</b> {session_name} ({duration} mins)',
+            f'• <b>Interruptions Blocked:</b> {apps_killed} apps prevented from distracting you'
+        ]
+        for line in focus_lines:
+            story.append(Paragraph(line, body_style))
+        story.append(Spacer(1, 16))
+
+    # Mood & Wellness Section
+    if mood_data:
+        story.append(Paragraph('📔 Mood & Journal', h2_style))
+        recent_moods = mood_data[-3:] if len(mood_data) > 3 else mood_data
+        for mood in recent_moods:
+            score = mood.get('mood_score', 0)
+            entry = mood.get('entry', '')
+            date_str = mood.get('date', '').split('T')[0]
+            sentiment = '😊 Positive' if score >= 4 else '😐 Neutral' if score == 3 else '😔 Negative'
+            
+            story.append(Paragraph(f'<b>Date:</b> {date_str} | <b>Mood:</b> {sentiment} (Score: {score}/5)', body_style))
+            story.append(Paragraph(f'<b>Note:</b> <i>"{entry}"</i>', body_style))
+            story.append(Spacer(1, 8))
+        story.append(Spacer(1, 10))
+
     # Wellness score
     story.append(Paragraph('Wellness Assessment', h2_style))
     score = max(0, min(100, int(100 - (total_hrs / 12 * 100))))
@@ -135,12 +184,32 @@ def _generate_report(period='daily'):
         recs.append('• Reduce total screen time — aim for under 4 hours daily')
     if any(a in apps for a in ['Discord','Steam','Spotify']):
         recs.append('• Set time limits on high-risk entertainment apps')
+    
+    # Adding recommendations based on mood data
+    if mood_data and len(mood_data) > 0:
+        avg_mood = sum(m.get('mood_score', 3) for m in mood_data) / len(mood_data)
+        if avg_mood <= 2.5:
+            recs.append('• Your recent mood scores are low. Consider taking a digital detox tomorrow.')
+            
     if not recs:
         recs.append('• Great habits! Maintain your current screen time balance')
     recs.append('• Use DigiWell Focus Mode during study/work sessions')
     recs.append('• Apply the 20-20-20 rule: every 20 mins, look 20 feet away for 20 seconds')
     for rec in recs:
         story.append(Paragraph(rec, body_style))
+    story.append(Spacer(1, 8))
+
+    # Feature highlights
+    story.append(Paragraph('DigiWell Feature Highlights', h2_style))
+    highlights = [
+        '• Focus Mode + Pomodoro for deep work sessions',
+        '• Real-time doomscroll detection and intervention prompts',
+        '• Dopamine loop detector for rapid app switching',
+        '• Daily reflection prompts to track mood and habits',
+        '• Detox challenges with streak tracking',
+    ]
+    for item in highlights:
+        story.append(Paragraph(item, body_style))
     story.append(Spacer(1, 8))
 
     # Footer

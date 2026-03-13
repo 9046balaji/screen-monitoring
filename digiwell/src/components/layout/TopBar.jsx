@@ -1,8 +1,10 @@
-import { useLocation } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import { currentUser } from '../../data/mockData';
 
 export default function TopBar() {
   const location = useLocation();
+  const isProfile = location.pathname === '/profile';
+  const isReports = location.pathname === '/reports';
   const getPageTitle = () => {
     switch (location.pathname) {
       case '/dashboard': return 'Dashboard';
@@ -19,7 +21,34 @@ export default function TopBar() {
   return (
     <header className="h-20 flex items-center justify-between px-8 bg-base/80 backdrop-blur-md sticky top-0 z-10 border-b border-slate-800">
       <div>
-        <h2 className="text-2xl font-bold text-white">{getPageTitle()}</h2>
+        <div className="flex items-center gap-3">
+          {(isProfile || isReports) ? (
+            <>
+              <NavLink
+                to="/profile"
+                className={`px-4 py-2 rounded-lg border text-sm font-semibold transition-colors ${
+                  isProfile
+                    ? 'border-primary bg-primary/20 text-white'
+                    : 'border-slate-700 bg-surface text-white hover:border-primary hover:text-primary'
+                }`}
+              >
+                Profile
+              </NavLink>
+              <NavLink
+                to="/reports"
+                className={`px-4 py-2 rounded-lg border text-sm font-semibold transition-colors ${
+                  isReports
+                    ? 'border-primary bg-primary/20 text-white'
+                    : 'border-slate-700 bg-surface text-white hover:border-primary hover:text-primary'
+                }`}
+              >
+                Reports
+              </NavLink>
+            </>
+          ) : (
+            <h2 className="text-2xl font-bold text-white">{getPageTitle()}</h2>
+          )}
+        </div>
         <p className="text-muted text-sm">{dateStr}</p>
       </div>
       <div className="flex items-center gap-4">
