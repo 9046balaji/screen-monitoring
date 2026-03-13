@@ -1,8 +1,8 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
-import MoodJournal from '../pages/MoodJournal';
-import * as api from '../api/digiwell';
+import MoodJournal from '../MoodJournal';
+import * as api from '../../api/digiwell';
 
 vi.mock('../api/digiwell', () => ({
   getMoodJournals: vi.fn(() => Promise.resolve([])),
