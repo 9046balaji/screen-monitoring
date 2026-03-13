@@ -6,12 +6,9 @@ export default function Sidebar() {
     { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
     { name: 'Analytics', path: '/analytics', icon: BarChart2 },
     { name: '7-Day Detox', path: '/detox', icon: Trophy },
-    { name: 'Predictions', path: '/predictions', icon: TrendingUp },
     { name: 'AI Coach', path: '/coach', icon: Bot },
-    { name: 'CBT Therapy', path: '/therapy', icon: Brain },
-    { name: 'Mood Journal', path: '/journal', icon: BookOpen },
     { name: 'Profile', path: '/profile', icon: User },
-    { name: 'Wellness Tips', path: '/wellness', icon: Heart },
+    { name: 'Wellness Center', path: '/wellness', icon: Heart },
     { name: 'App Tracker', path: '/tracker', icon: Monitor },
     { name: 'Focus Mode', path: '/focus', icon: Target },
   ];
