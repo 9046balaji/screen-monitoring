@@ -1220,6 +1220,27 @@ MOOD_JOURNAL_PATH = os.path.join(os.path.dirname(__file__), 'data', 'mood_journa
 from ai_service import analyze_journal, predict_relapse, therapy_start, therapy_agent_step
 import uuid
 
+@app.route('/api/analytics', methods=['POST'])
+def log_analytics():
+    try:
+        data = request.get_json()
+        event_name = data.get('event_name')
+        user_id = data.get('user_id', 'local')
+        metadata = data.get('metadata', {})
+        
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute('''
+            INSERT INTO analytics (event_name, user_id, metadata)
+            VALUES (?, ?, ?)
+        ''', (event_name, user_id, json.dumps(metadata)))
+        conn.commit()
+        conn.close()
+        
+        return jsonify({"status": "logged"}), 201
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/therapy/session', methods=['POST'])
 def create_therapy_session():
     try:
