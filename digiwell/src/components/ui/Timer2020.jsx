@@ -41,15 +41,15 @@ export default function Timer2020() {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       className={`rounded-2xl border p-6 shadow-lg flex flex-col items-center gap-4 transition-colors duration-500 ${
-        isFlashing ? 'bg-success/20 border-success' : 'bg-surface border-slate-700'
+        isFlashing ? 'bg-success/20 border-success' : 'bg-surface border-slate-300 dark:border-slate-700'
       }`}
     >
       <div className="text-center">
-        <h3 className="text-xl font-bold text-white">20-20-20 Eye Rule Timer</h3>
+        <h3 className="text-xl font-bold text-slate-900 dark:text-white">20-20-20 Eye Rule Timer</h3>
         <p className="text-muted text-sm mt-1">Every 20 minutes, look at something 20 feet away for 20 seconds</p>
       </div>
       
-      <div className="text-6xl font-mono font-bold text-white tracking-wider my-4">
+      <div className="text-6xl font-mono font-bold text-slate-900 dark:text-white tracking-wider my-4">
         {String(minutes).padStart(2, '0')}:{String(seconds).padStart(2, '0')}
       </div>
 
@@ -63,7 +63,7 @@ export default function Timer2020() {
         </button>
         <button
           onClick={reset}
-          className="flex items-center gap-2 px-6 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-xl font-medium transition-colors"
+          className="flex items-center gap-2 px-6 py-3 bg-slate-300 dark:bg-slate-700 hover:bg-slate-600 text-slate-900 dark:text-white rounded-xl font-medium transition-colors"
         >
           <RotateCcw className="w-5 h-5" />
           Reset

@@ -31,10 +31,10 @@ export default function HeatmapChart({ data, delay = 0 }) {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay }}
-      className="rounded-2xl border border-slate-700 bg-surface p-6 shadow-lg flex flex-col gap-4"
+      className="rounded-2xl border border-slate-300 dark:border-slate-700 bg-surface p-6 shadow-lg flex flex-col gap-4"
     >
       <div className="flex justify-between items-center">
-        <h3 className="text-lg font-semibold text-white">Weekly Usage Heatmap</h3>
+        <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Weekly Usage Heatmap</h3>
         <span className="text-xs text-muted">Peak: {peak.day} {formatHour(peak.hour)} ({peak.value} mins)</span>
       </div>
 
@@ -81,7 +81,7 @@ export default function HeatmapChart({ data, delay = 0 }) {
 
       {/* Tooltip */}
       {tooltip && (
-        <div className="text-sm text-white text-center">
+        <div className="text-sm text-slate-900 dark:text-white text-center">
           <span className="text-muted">{tooltip.day} at {formatHour(tooltip.hour)}</span>
           <span className="mx-2">—</span>
           <span className="font-semibold">{tooltip.value} mins</span>

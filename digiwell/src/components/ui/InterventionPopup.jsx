@@ -51,7 +51,7 @@ export default function InterventionPopup() {
           initial={{ opacity: 0, scale: 0.9, y: 50 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.9, y: 50 }}
-          className="fixed bottom-10 right-10 z-50 w-96 rounded-2xl bg-slate-900 border border-red-500/50 shadow-2xl p-6 overflow-hidden"
+          className="fixed bottom-10 right-10 z-50 w-96 rounded-2xl bg-slate-100 dark:bg-slate-900 border border-red-500/50 shadow-2xl p-6 overflow-hidden"
         >
           {/* Animated red glow background */}
           <div className="absolute inset-0 bg-red-500/10 animate-pulse pointer-events-none" />
@@ -61,9 +61,9 @@ export default function InterventionPopup() {
               <AlertTriangle size={28} />
             </div>
             <div className="flex-1">
-              <h3 className="text-xl font-bold text-white mb-2">⚠️ DigiWell Intervention</h3>
-              <p className="text-slate-300 leading-relaxed mb-4">
-                Doomscrolling detected on <span className="font-semibold text-white">{activeIntervention.app_name}</span>. Start Focus Mode?
+              <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">⚠️ DigiWell Intervention</h3>
+              <p className="text-slate-700 dark:text-slate-300 leading-relaxed mb-4">
+                Doomscrolling detected on <span className="font-semibold text-slate-900 dark:text-white">{activeIntervention.app_name}</span>. Start Focus Mode?
               </p>
               
               <div className="flex gap-3 mt-4">
@@ -76,7 +76,7 @@ export default function InterventionPopup() {
                 </button>
                 <button
                   onClick={handleIgnore}
-                  className="bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 py-2 px-4 rounded-lg flex items-center justify-center transition-colors"
+                  className="bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 py-2 px-4 rounded-lg flex items-center justify-center transition-colors"
                 >
                   Ignore
                 </button>
@@ -85,7 +85,7 @@ export default function InterventionPopup() {
             
             <button 
               onClick={handleIgnore}
-              className="absolute -top-2 -right-2 p-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded-full transition-colors"
+              className="absolute -top-2 -right-2 p-1 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-800 rounded-full transition-colors"
             >
               <X size={20} />
             </button>

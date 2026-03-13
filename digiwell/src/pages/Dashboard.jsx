@@ -167,10 +167,10 @@ export default function Dashboard() {
             <div className="flex items-center gap-3">
               <ShieldAlert className="text-danger" size={24} />
               <div>
-                <h4 className="text-white font-semibold flex items-center gap-2">
+                <h4 className="text-slate-900 dark:text-white font-semibold flex items-center gap-2">
                   AI Intervention <span className="bg-danger text-white text-xs px-2 py-0.5 rounded-full">New</span>
                 </h4>
-                <p className="text-sm text-slate-300">
+                <p className="text-sm text-slate-700 dark:text-slate-300">
                   {inv.reason} ({inv.app_name})
                 </p>
               </div>
@@ -232,11 +232,11 @@ export default function Dashboard() {
             <Sparkles size={24} />
           </div>
           <div className="flex-1">
-            <h3 className="text-white font-bold text-lg mb-1">AI Daily Reflection</h3>
-            <p className="text-slate-300 text-sm mb-3">{dailyReflection.summary}</p>
+            <h3 className="text-slate-900 dark:text-white font-bold text-lg mb-1">AI Daily Reflection</h3>
+            <p className="text-slate-700 dark:text-slate-300 text-sm mb-3">{dailyReflection.summary}</p>
             <div className="flex items-center gap-4 text-xs font-medium">
-              <span className="bg-slate-800/80 px-2 py-1 rounded text-slate-300">Today: {dailyReflection.today_hours}h</span>
-              <span className="bg-slate-800/80 px-2 py-1 rounded text-slate-300">Yesterday: {dailyReflection.yesterday_hours}h</span>
+              <span className="bg-surface dark:bg-slate-800/80 px-2 py-1 rounded text-slate-700 dark:text-slate-300">Today: {dailyReflection.today_hours}h</span>
+              <span className="bg-surface dark:bg-slate-800/80 px-2 py-1 rounded text-slate-700 dark:text-slate-300">Yesterday: {dailyReflection.yesterday_hours}h</span>
               <span className={`px-2 py-1 rounded ${dailyReflection.trend === 'down' ? 'bg-success/20 text-success' : 'bg-danger/20 text-danger'}`}>
                 {dailyReflection.trend === 'down' ? '▼' : '▲'} {dailyReflection.difference_hours}h
               </span>
@@ -249,24 +249,24 @@ export default function Dashboard() {
       {focusProdData && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in slide-in-from-bottom-4" style={{ animationDelay: '0.45s' }}>
           <div className="card lg:col-span-3 bg-gradient-to-r from-success/10 to-transparent border border-success/20">
-            <h3 className="text-xl font-bold flex items-center gap-2 text-white mb-4">
+            <h3 className="text-xl font-bold flex items-center gap-2 text-slate-900 dark:text-white mb-4">
               <Target className="text-success" /> Focus Productivity AI
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div>
-                <p className="text-sm text-slate-400">Focus Score</p>
+                <p className="text-sm text-slate-600 dark:text-slate-400">Focus Score</p>
                 <p className="text-2xl font-bold text-success">{focusProdData.productivity_score}%</p>
               </div>
               <div>
-                <p className="text-sm text-slate-400">Deep Work</p>
-                <p className="text-2xl font-bold text-white">{focusProdData.deep_work_minutes} min</p>
+                <p className="text-sm text-slate-600 dark:text-slate-400">Deep Work</p>
+                <p className="text-2xl font-bold text-slate-900 dark:text-white">{focusProdData.deep_work_minutes} min</p>
               </div>
               <div>
-                <p className="text-sm text-slate-400">Distracted</p>
+                <p className="text-sm text-slate-600 dark:text-slate-400">Distracted</p>
                 <p className="text-2xl font-bold text-danger">{focusProdData.distracted_minutes} min</p>
               </div>
               <div>
-                <p className="text-sm text-slate-400">Best Focus Window</p>
+                <p className="text-sm text-slate-600 dark:text-slate-400">Best Focus Window</p>
                 <p className="text-2xl font-bold text-primary">{focusProdData.best_focus_window}</p>
               </div>
             </div>

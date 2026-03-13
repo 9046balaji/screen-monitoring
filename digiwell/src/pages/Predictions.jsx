@@ -100,7 +100,7 @@ export default function Predictions() {
         className="rounded-2xl border border-primary/50 bg-primary/10 p-4 flex items-center gap-3"
       >
         <Bot className="w-6 h-6 text-primary shrink-0" />
-        <p className="text-white font-medium text-sm">
+        <p className="text-slate-900 dark:text-white font-medium text-sm">
           Predictions powered by ML models — Mental health risk: {riskInfo.prediction || 'Loading...'} ({confidencePercent}% confidence)
         </p>
       </motion.div>
@@ -141,27 +141,27 @@ export default function Predictions() {
         >
           <div className="flex items-center gap-2 text-indigo-400 mb-4">
             <BrainCircuit className="w-6 h-6" />
-            <h3 className="text-xl font-bold text-white">AI Digital Twin Simulator</h3>
+            <h3 className="text-xl font-bold text-slate-900 dark:text-white">AI Digital Twin Simulator</h3>
           </div>
-          <p className="text-slate-300 text-sm mb-6">
+          <p className="text-slate-700 dark:text-slate-300 text-sm mb-6">
             Projecting your habits <span className="font-bold text-indigo-300">{twinData.days_projected} days</span> into the future based on current trends.
           </p>
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-            <div className="bg-slate-800/60 p-4 rounded-xl border border-slate-700">
-              <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Projected Daily Usage</p>
-              <p className="text-2xl font-black text-white">{twinData.projected_daily_hours} hrs</p>
+            <div className="bg-slate-200 dark:bg-slate-800/60 p-4 rounded-xl border border-slate-300 dark:border-slate-700">
+              <p className="text-xs text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-1">Projected Daily Usage</p>
+              <p className="text-2xl font-black text-slate-900 dark:text-white">{twinData.projected_daily_hours} hrs</p>
             </div>
-            <div className="bg-slate-800/60 p-4 rounded-xl border border-slate-700">
-              <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Productivity Impact</p>
+            <div className="bg-slate-200 dark:bg-slate-800/60 p-4 rounded-xl border border-slate-300 dark:border-slate-700">
+              <p className="text-xs text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-1">Productivity Impact</p>
               <p className="text-2xl font-black text-danger">{twinData.productivity_impact_percent}%</p>
             </div>
-            <div className="bg-slate-800/60 p-4 rounded-xl border border-slate-700">
-              <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Sleep Impact</p>
+            <div className="bg-slate-200 dark:bg-slate-800/60 p-4 rounded-xl border border-slate-300 dark:border-slate-700">
+              <p className="text-xs text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-1">Sleep Impact</p>
               <p className="text-2xl font-black text-warning">{twinData.sleep_impact_percent}%</p>
             </div>
-            <div className="bg-slate-800/60 p-4 rounded-xl border border-slate-700">
-              <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Mental Health Forecast</p>
+            <div className="bg-slate-200 dark:bg-slate-800/60 p-4 rounded-xl border border-slate-300 dark:border-slate-700">
+              <p className="text-xs text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-1">Mental Health Forecast</p>
               <p className={`text-2xl font-black ${twinData.mental_health_forecast === 'High Risk' ? 'text-danger' : 'text-primary'}`}>
                 {twinData.mental_health_forecast}
               </p>
@@ -182,13 +182,13 @@ export default function Predictions() {
         className="grid grid-cols-1 md:grid-cols-3 gap-6"
       >
         {recommendations.map((rec, idx) => (
-          <div key={idx} className="rounded-2xl border border-slate-700 bg-surface p-6 shadow-lg flex flex-col justify-between gap-4">
-            <p className="text-white font-medium">{rec}</p>
+          <div key={idx} className="rounded-2xl border border-slate-300 dark:border-slate-700 bg-surface p-6 shadow-lg flex flex-col justify-between gap-4">
+            <p className="text-slate-900 dark:text-white font-medium">{rec}</p>
             {idx === 0 && (
               <button
                 onClick={() => setGrayscale(!grayscale)}
                 className={`self-start px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  grayscale ? 'bg-success text-white' : 'bg-slate-700 text-white hover:bg-slate-600'
+                  grayscale ? 'bg-success text-white' : 'bg-slate-300 dark:bg-slate-700 text-white hover:bg-slate-600'
                 }`}
               >
                 {grayscale ? 'Enabled' : 'Enable'}
@@ -198,7 +198,7 @@ export default function Predictions() {
               <button
                 onClick={() => setDnd(!dnd)}
                 className={`self-start px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  dnd ? 'bg-success text-white' : 'bg-slate-700 text-white hover:bg-slate-600'
+                  dnd ? 'bg-success text-white' : 'bg-slate-300 dark:bg-slate-700 text-white hover:bg-slate-600'
                 }`}
               >
                 {dnd ? 'Enabled' : 'Enable'}
@@ -222,15 +222,15 @@ export default function Predictions() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.4 }}
-        className="rounded-2xl border border-slate-700 bg-surface p-6 shadow-lg flex flex-col gap-2"
+        className="rounded-2xl border border-slate-300 dark:border-slate-700 bg-surface p-6 shadow-lg flex flex-col gap-2"
       >
         <div className="flex justify-between items-center text-sm">
-          <span className="text-white font-medium">Model Confidence: {confidencePercent}%</span>
+          <span className="text-slate-900 dark:text-white font-medium">Model Confidence: {confidencePercent}%</span>
           {riskInfo.prediction && (
             <span className="text-muted text-xs">Model: {riskInfo.model_used || 'GradientBoosting'}</span>
           )}
         </div>
-        <div className="h-1.5 w-full bg-slate-700 rounded-full overflow-hidden">
+        <div className="h-1.5 w-full bg-slate-300 dark:bg-slate-700 rounded-full overflow-hidden">
           <div className="h-full bg-primary rounded-full" style={{ width: `${confidencePercent}%` }} />
         </div>
         <p className="text-xs text-muted mt-1">Prediction confidence from trained ML model. Real-time inference from Flask backend.</p>

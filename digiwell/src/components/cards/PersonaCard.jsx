@@ -8,7 +8,7 @@ export default function PersonaCard({ persona, isUser, delay = 0 }) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay }}
       className={`rounded-2xl border p-4 flex flex-col gap-3 relative transition-all ${
-        isUser ? 'border-primary bg-primary/10 shadow-[0_0_15px_rgba(99,102,241,0.3)]' : 'border-slate-700 bg-surface'
+        isUser ? 'border-primary bg-primary/10 shadow-[0_0_15px_rgba(99,102,241,0.3)]' : 'border-slate-300 dark:border-slate-700 bg-surface'
       }`}
     >
       {isUser && (
@@ -17,7 +17,7 @@ export default function PersonaCard({ persona, isUser, delay = 0 }) {
         </span>
       )}
       <div className="text-3xl">{persona.emoji}</div>
-      <h4 className="text-white font-semibold">{persona.name}</h4>
+      <h4 className="text-slate-900 dark:text-white font-semibold">{persona.name}</h4>
       <RiskBadge risk={persona.risk} />
       <p className="text-xs text-muted leading-relaxed">{persona.description}</p>
     </motion.div>

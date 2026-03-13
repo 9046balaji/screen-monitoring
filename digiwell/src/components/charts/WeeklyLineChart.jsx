@@ -14,9 +14,9 @@ export default function WeeklyLineChart({ data, delay = 0 }) {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay }}
-      className="rounded-2xl border border-slate-700 bg-surface p-6 shadow-lg flex flex-col gap-4 h-[400px]"
+      className="rounded-2xl border border-slate-300 dark:border-slate-700 bg-surface p-6 shadow-lg flex flex-col gap-4 h-[400px]"
     >
-      <h3 className="text-lg font-semibold text-white">Weekly Trend vs Goal</h3>
+      <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Weekly Trend vs Goal</h3>
       <div className="flex-1 w-full">
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart data={enriched} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>

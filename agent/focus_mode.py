@@ -11,7 +11,7 @@ FOCUS_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'focus_sessio
 # Default list of distracting apps to block during focus
 DEFAULT_BLOCK_LIST = [
     'discord.exe', 'slack.exe', 'WhatsApp.exe', 'Telegram.exe',
-    'steam.exe', 'spotify.exe', 'chrome.exe', 'firefox.exe', 'msedge.exe'
+    'steam.exe', 'spotify.exe', 'chrome.exe', 'firefox.exe'
 ]
 
 _focus_active = False

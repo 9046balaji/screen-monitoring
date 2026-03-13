@@ -17,11 +17,11 @@ export default function AddictionRiskCard({ score, riskLevel, socialHours, total
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay }}
-      className="rounded-2xl border border-slate-700 bg-surface p-6 shadow-lg flex flex-col h-full"
+      className="rounded-2xl border border-slate-300 dark:border-slate-700 bg-surface p-6 shadow-lg flex flex-col h-full"
     >
       <div className="flex items-center gap-2 mb-4">
         <BrainCircuit className="text-primary" size={24} />
-        <h3 className="text-lg font-semibold text-white">Digital Wellness Score</h3>
+        <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Digital Wellness Score</h3>
       </div>
       
       <div className="flex-1 flex flex-col items-center justify-center">
@@ -39,8 +39,8 @@ export default function AddictionRiskCard({ score, riskLevel, socialHours, total
               />
             </div>
             {projectedScore !== undefined && (
-               <div className="flex flex-col items-center justify-center text-center p-2 rounded-lg bg-base border border-slate-700 w-24">
-                 <span className="text-xs text-slate-400">30-Day Twin</span>
+               <div className="flex flex-col items-center justify-center text-center p-2 rounded-lg bg-base border border-slate-300 dark:border-slate-700 w-24">
+                 <span className="text-xs text-slate-600 dark:text-slate-400">30-Day Twin</span>
                  <span className={`text-xl font-bold mt-1 ${projectedScore > score ? 'text-green-400' : 'text-red-400'}`}>
                     {projectedScore}
                  </span>
@@ -49,18 +49,18 @@ export default function AddictionRiskCard({ score, riskLevel, socialHours, total
         </div>
         
         <div className="text-center w-full">
-          <p className="text-lg font-medium text-white mb-1">
+          <p className="text-lg font-medium text-slate-900 dark:text-white mb-1">
             Risk: <span style={{ color }}>{riskLevel}</span>
           </p>
           <div className="flex justify-between mt-4 bg-base rounded-lg p-3 text-sm">
             <div className="text-center">
               <p className="text-muted mb-1">Social</p>
-              <p className="font-semibold text-white">{socialHours}h</p>
+              <p className="font-semibold text-slate-900 dark:text-white">{socialHours}h</p>
             </div>
-            <div className="border-l border-slate-700 mx-2"></div>
+            <div className="border-l border-slate-300 dark:border-slate-700 mx-2"></div>
             <div className="text-center">
               <p className="text-muted mb-1">Total</p>
-              <p className="font-semibold text-white">{totalHours}h</p>
+              <p className="font-semibold text-slate-900 dark:text-white">{totalHours}h</p>
             </div>
           </div>
         </div>

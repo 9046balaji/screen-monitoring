@@ -29,12 +29,12 @@ export default function AlertBanner({ message, buttonText, route, delay = 0, var
     >
       <div className="flex items-start gap-3">
         <AlertTriangle className={`w-6 h-6 shrink-0 ${currentStyle.text}`} />
-        <p className="text-white font-medium">{message}</p>
+        <p className="text-slate-900 dark:text-white font-medium">{message}</p>
       </div>
       {buttonText && route && (
         <button
           onClick={() => navigate(route)}
-          className={`self-start px-4 py-2 text-white rounded-lg text-sm font-medium transition-colors ${currentStyle.btn}`}
+          className={`self-start px-4 py-2 text-slate-900 dark:text-white rounded-lg text-sm font-medium transition-colors ${currentStyle.btn}`}
         >
           {buttonText}
         </button>

@@ -150,7 +150,7 @@ export default function WellnessTips() {
           className="rounded-2xl border border-primary/50 bg-primary/10 p-4 flex items-center gap-3"
         >
           <Brain className="w-6 h-6 text-primary shrink-0" />
-          <p className="text-white font-medium text-sm">
+          <p className="text-slate-900 dark:text-white font-medium text-sm">
             Your persona: <strong>{personaInsight.persona}</strong> — {personaInsight.description} Tips personalized by ML model.
           </p>
         </motion.div>
@@ -166,16 +166,16 @@ export default function WellnessTips() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="rounded-2xl border border-slate-700 bg-surface p-6 shadow-lg flex flex-col gap-4"
+          className="rounded-2xl border border-slate-300 dark:border-slate-700 bg-surface p-6 shadow-lg flex flex-col gap-4"
         >
           <div className="flex items-center gap-3 text-primary">
             <Moon className="w-6 h-6" />
-            <h3 className="text-lg font-semibold text-white">Sleep Hygiene</h3>
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Sleep Hygiene</h3>
           </div>
-          <div className="p-3 bg-base rounded-lg border border-slate-700">
+          <div className="p-3 bg-base rounded-lg border border-slate-300 dark:border-slate-700">
             <p className="text-sm text-muted italic">"Your data shows usage until 2 AM on 5 of last 7 days"</p>
           </div>
-          <ul className="space-y-2 text-sm text-white">
+          <ul className="space-y-2 text-sm text-slate-900 dark:text-white">
             {sleepTips.map((tip, idx) => (
               <li key={idx} className="flex items-start gap-2">
                 <span className="text-primary mt-0.5">-</span>
@@ -190,18 +190,18 @@ export default function WellnessTips() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="rounded-2xl border border-slate-700 bg-surface p-6 shadow-lg flex flex-col gap-4"
+          className="rounded-2xl border border-slate-300 dark:border-slate-700 bg-surface p-6 shadow-lg flex flex-col gap-4"
         >
           <div className="flex items-center gap-3 text-warning">
             <Target className="w-6 h-6" />
-            <h3 className="text-lg font-semibold text-white">Productivity Boost</h3>
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Productivity Boost</h3>
           </div>
-          <div className="p-3 bg-base rounded-lg border border-slate-700">
+          <div className="p-3 bg-base rounded-lg border border-slate-300 dark:border-slate-700">
             <p className="text-sm text-muted italic">
               "Predicted exam score: {predictedExam}% — {predictedExam < 65 ? 'needs improvement' : 'on track'}"
             </p>
           </div>
-          <ul className="space-y-2 text-sm text-white">
+          <ul className="space-y-2 text-sm text-slate-900 dark:text-white">
             {productivityTips.map((tip, idx) => (
               <li key={idx} className="flex items-start gap-2">
                 <span className="text-warning mt-0.5">-</span>
@@ -216,18 +216,18 @@ export default function WellnessTips() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
-          className="rounded-2xl border border-slate-700 bg-surface p-6 shadow-lg flex flex-col gap-4"
+          className="rounded-2xl border border-slate-300 dark:border-slate-700 bg-surface p-6 shadow-lg flex flex-col gap-4"
         >
           <div className="flex items-center gap-3 text-danger">
             <Brain className="w-6 h-6" />
-            <h3 className="text-lg font-semibold text-white">Mental Wellness</h3>
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Mental Wellness</h3>
           </div>
-          <div className="p-3 bg-base rounded-lg border border-slate-700">
+          <div className="p-3 bg-base rounded-lg border border-slate-300 dark:border-slate-700">
             <p className="text-sm text-muted italic">
               "Mental health risk: {mentalRiskLabel} (score: {mentalRiskScore}/100)"
             </p>
           </div>
-          <ul className="space-y-2 text-sm text-white">
+          <ul className="space-y-2 text-sm text-slate-900 dark:text-white">
             {mentalTips.map((tip, idx) => (
               <li key={idx} className="flex items-start gap-2">
                 <span className="text-danger mt-0.5">-</span>
@@ -246,7 +246,7 @@ export default function WellnessTips() {
         className="rounded-2xl border border-primary/30 bg-primary/5 p-6 shadow-lg flex flex-col md:flex-row items-center justify-between gap-6"
       >
         <div className="flex flex-col gap-2">
-          <h3 className="text-xl font-bold text-white">Today's Challenge: No Instagram before noon</h3>
+          <h3 className="text-xl font-bold text-slate-900 dark:text-white">Today's Challenge: No Instagram before noon</h3>
           <p className="text-muted text-sm flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 text-success" />
             Current streak: {streak} days
@@ -257,7 +257,7 @@ export default function WellnessTips() {
           <div className="flex gap-3 w-full md:w-auto">
             <button
               onClick={handleSkip}
-              className="flex-1 md:flex-none px-6 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-xl font-medium transition-colors"
+              className="flex-1 md:flex-none px-6 py-2 bg-slate-300 dark:bg-slate-700 hover:bg-slate-600 text-slate-900 dark:text-white rounded-xl font-medium transition-colors"
             >
               Skip
             </button>

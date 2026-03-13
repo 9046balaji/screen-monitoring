@@ -46,7 +46,7 @@ export default function Coach() {
         </div>
         <div>
           <h2 className="text-lg font-bold text-slate-800">DigiWell AI Coach</h2>
-          <p className="text-sm text-slate-500">100% Local • Privacy-First • Context-Aware</p>
+          <p className="text-sm text-slate-600 dark:text-slate-500">100% Local • Privacy-First • Context-Aware</p>
         </div>
       </div>
 
@@ -96,7 +96,7 @@ export default function Coach() {
             onChange={(e) => setInput(e.target.value)}
             placeholder="Ask about your screen time, wellness risk, or strategies..."
             disabled={isLoading}
-            className="flex-1 px-4 py-3 text-slate-800 bg-white rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all disabled:bg-slate-50 disabled:text-slate-400"
+            className="flex-1 px-4 py-3 text-slate-800 bg-white rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all disabled:bg-slate-50 disabled:text-slate-600 dark:text-slate-400"
           />
           <button
             type="submit"

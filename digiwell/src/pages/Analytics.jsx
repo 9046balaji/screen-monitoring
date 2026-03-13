@@ -42,7 +42,7 @@ export default function Analytics() {
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
               dateRange === range
                 ? 'bg-primary text-white'
-                : 'bg-surface text-muted hover:bg-slate-700 hover:text-white border border-slate-700'
+                : 'bg-surface text-muted hover:bg-slate-300 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white border border-slate-300 dark:border-slate-700'
             }`}
           >
             {range}

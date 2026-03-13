@@ -5,9 +5,9 @@ export default function ProgressBar({ label, value, max = 5, colorClass = "bg-pr
     <div className="flex flex-col gap-1 w-full">
       <div className="flex justify-between text-sm">
         <span className="text-muted">{label}</span>
-        <span className="text-white font-medium">{value}/{max}</span>
+        <span className="text-slate-900 dark:text-white font-medium">{value}/{max}</span>
       </div>
-      <div className="h-2 w-full bg-slate-700 rounded-full overflow-hidden">
+      <div className="h-2 w-full bg-slate-300 dark:bg-slate-700 rounded-full overflow-hidden">
         <div 
           className={`h-full rounded-full ${colorClass}`} 
           style={{ width: `${percentage}%` }}

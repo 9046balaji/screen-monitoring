@@ -44,10 +44,10 @@ export default function AddictionHeatmap({ delay = 0 }) {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay }}
-      className="rounded-2xl border border-slate-700 bg-surface p-6 shadow-lg flex flex-col gap-4"
+      className="rounded-2xl border border-slate-300 dark:border-slate-700 bg-surface p-6 shadow-lg flex flex-col gap-4"
     >
       <div className="flex justify-between items-center">
-        <h3 className="text-lg font-semibold text-white">AI Addiction Heatmap</h3>
+        <h3 className="text-lg font-semibold text-slate-900 dark:text-white">AI Addiction Heatmap</h3>
       </div>
 
       <div className="overflow-x-auto">
@@ -96,7 +96,7 @@ export default function AddictionHeatmap({ delay = 0 }) {
       {/* Tooltip display */}
       <div className="h-6 flex items-center justify-center">
         {tooltip ? (
-          <div className="text-sm text-white">
+          <div className="text-sm text-slate-900 dark:text-white">
             <span className="text-muted">{tooltip.day} {formatHour(tooltip.hour)}</span>
             <span className="mx-2">—</span>
             <span className="font-semibold" style={{ color: getRiskColor(tooltip.risk) }}>{tooltip.risk} Level</span>

@@ -14,9 +14,9 @@ export default function Sidebar() {
   ];
 
   return (
-    <div className="fixed left-0 top-0 h-full w-60 bg-base border-r border-slate-800 flex flex-col">
+    <div className="fixed left-0 top-0 h-full w-60 bg-base border-r border-slate-200 dark:border-slate-800 flex flex-col">
       <div className="p-6">
-        <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
           🧠 DigiWell
         </h1>
       </div>
@@ -28,8 +28,8 @@ export default function Sidebar() {
             className={({ isActive }) =>
               `flex items-center gap-3 px-4 py-3 rounded-xl transition-colors ${
                 isActive
-                  ? 'bg-white text-base font-semibold'
-                  : 'text-muted hover:bg-slate-800 hover:text-white'
+                  ? 'bg-primary text-white font-semibold'
+                  : 'text-muted hover:bg-slate-200 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
               }`
             }
           >
@@ -39,12 +39,12 @@ export default function Sidebar() {
         ))}
       </nav>
       <div className="p-4">
-        <div className="bg-surface border border-slate-700 rounded-2xl p-4 flex items-center gap-3">
+        <div className="bg-surface border border-slate-300 dark:border-slate-700 rounded-2xl p-4 flex items-center gap-3">
           <div className="w-12 h-12 rounded-full border-4 border-danger flex items-center justify-center text-danger font-bold text-sm">
             42
           </div>
           <div className="text-sm">
-            <p className="font-semibold text-white">Score: 42</p>
+            <p className="font-semibold text-slate-900 dark:text-white">Score: 42</p>
             <p className="text-danger text-xs">Needs Attention</p>
           </div>
         </div>

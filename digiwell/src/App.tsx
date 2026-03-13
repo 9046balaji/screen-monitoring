@@ -24,7 +24,7 @@ function AppContent() {
   useDopamineDetector();
 
   return (
-    <div className="flex min-h-screen bg-base text-white">
+    <div className="flex min-h-screen bg-base text-slate-900 dark:text-white">
       <Sidebar />
       <div className="flex-1 ml-60 flex flex-col">
         <TopBar />
@@ -56,7 +56,7 @@ export default function App() {
     <Router>
       <AppContent />
       <Toaster position="top-right" toastOptions={{
-        style: { background: '#1E293B', color: '#fff', border: '1px solid #334155' }
+        className: 'bg-surface text-slate-900 dark:bg-slate-800 dark:text-white border border-slate-200 dark:border-slate-700'
       }} />
     </Router>
   );

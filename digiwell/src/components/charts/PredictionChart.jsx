@@ -8,8 +8,8 @@ export default function PredictionChart({ data, delay = 0 }) {
       const risk = val > 60 ? 'High' : 'Low';
       const riskColor = val > 60 ? 'text-danger' : 'text-success';
       return (
-        <div className="bg-surface border border-slate-700 p-3 rounded-lg shadow-lg">
-          <p className="text-white font-medium">{label}</p>
+        <div className="bg-surface border border-slate-300 dark:border-slate-700 p-3 rounded-lg shadow-lg">
+          <p className="text-slate-900 dark:text-white font-medium">{label}</p>
           <p className="text-muted text-sm">{`Predicted: ${val} mins`}</p>
           <p className={`text-sm font-bold ${riskColor}`}>Risk: {risk}</p>
         </div>
@@ -23,9 +23,9 @@ export default function PredictionChart({ data, delay = 0 }) {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay }}
-      className="rounded-2xl border border-slate-700 bg-surface p-6 shadow-lg flex flex-col gap-4 h-[400px]"
+      className="rounded-2xl border border-slate-300 dark:border-slate-700 bg-surface p-6 shadow-lg flex flex-col gap-4 h-[400px]"
     >
-      <h3 className="text-lg font-semibold text-white">Next 6 Hours Prediction</h3>
+      <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Next 6 Hours Prediction</h3>
       <div className="flex-1 w-full">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>

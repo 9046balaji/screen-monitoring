@@ -51,7 +51,7 @@ export default function Therapy() {
 
   if (!plan) {
     return (
-      <div className="p-8 text-center text-slate-500">
+      <div className="p-8 text-center text-slate-600 dark:text-slate-500">
         <p>No therapy plan available at the moment.</p>
       </div>
     );
@@ -65,7 +65,7 @@ export default function Therapy() {
         </div>
         <div>
           <h1 className="text-3xl font-bold text-slate-800">CBT Action Plan</h1>
-          <p className="text-slate-500 mt-1">Personalized Cognitive Behavioral Therapy for: <strong>{plan.top_category}</strong></p>
+          <p className="text-slate-600 dark:text-slate-500 mt-1">Personalized Cognitive Behavioral Therapy for: <strong>{plan.top_category}</strong></p>
         </div>
       </div>
 
@@ -80,7 +80,7 @@ export default function Therapy() {
               <p className="text-slate-600 text-lg">{step.desc}</p>
             </div>
             <div className="flex-shrink-0 self-center">
-              <ShieldCheck className="w-6 h-6 text-slate-300" />
+              <ShieldCheck className="w-6 h-6 text-slate-700 dark:text-slate-300" />
             </div>
           </div>
         ))}

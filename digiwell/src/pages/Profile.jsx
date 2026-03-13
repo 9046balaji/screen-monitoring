@@ -119,14 +119,14 @@ export default function Profile() {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="rounded-2xl border border-slate-700 bg-surface p-6 shadow-lg flex flex-col md:flex-row gap-8 items-start"
+        className="rounded-2xl border border-slate-300 dark:border-slate-700 bg-surface p-6 shadow-lg flex flex-col md:flex-row gap-8 items-start"
       >
         <div className="flex flex-col items-center gap-4">
           <div className="w-24 h-24 rounded-full bg-primary flex items-center justify-center text-white text-3xl font-bold">
             {currentUser.name.split(' ').map(n => n[0]).join('')}
           </div>
           <div className="text-center">
-            <h2 className="text-xl font-bold text-white">{currentUser.name}</h2>
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white">{currentUser.name}</h2>
             <p className="text-muted text-sm">{currentUser.age} years old</p>
           </div>
         </div>
@@ -138,7 +138,7 @@ export default function Profile() {
               type="number"
               value={goal}
               onChange={(e) => setGoal(e.target.value)}
-              className="bg-base border border-slate-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-primary"
+              className="bg-base border border-slate-300 dark:border-slate-700 rounded-lg px-4 py-2 text-slate-900 dark:text-white focus:outline-none focus:border-primary"
             />
           </div>
           <div className="flex flex-col gap-2">
@@ -146,7 +146,7 @@ export default function Profile() {
             <select
               value={platform}
               onChange={(e) => setPlatform(e.target.value)}
-              className="bg-base border border-slate-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-primary"
+              className="bg-base border border-slate-300 dark:border-slate-700 rounded-lg px-4 py-2 text-slate-900 dark:text-white focus:outline-none focus:border-primary"
             >
               <option value="Instagram">Instagram</option>
               <option value="Facebook">Facebook</option>
@@ -158,7 +158,7 @@ export default function Profile() {
             <select
               value={profession}
               onChange={(e) => setProfession(e.target.value)}
-              className="bg-base border border-slate-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-primary"
+              className="bg-base border border-slate-300 dark:border-slate-700 rounded-lg px-4 py-2 text-slate-900 dark:text-white focus:outline-none focus:border-primary"
             >
               <option value="Student">Student</option>
               <option value="Software Engineer">Software Engineer</option>
@@ -183,7 +183,7 @@ export default function Profile() {
         transition={{ delay: 0.1 }}
         className="flex flex-col gap-4"
       >
-        <h3 className="text-xl font-bold text-white">Your Digital Persona {loading ? '' : '(ML Predicted)'}</h3>
+        <h3 className="text-xl font-bold text-slate-900 dark:text-white">Your Digital Persona {loading ? '' : '(ML Predicted)'}</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
           {userPersonas.map((persona) => (
             <PersonaCard
@@ -204,25 +204,25 @@ export default function Profile() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
-          className="rounded-2xl border border-slate-700 bg-surface p-6 shadow-lg flex flex-col gap-6"
+          className="rounded-2xl border border-slate-300 dark:border-slate-700 bg-surface p-6 shadow-lg flex flex-col gap-6"
         >
-          <h3 className="text-lg font-semibold text-white">Productivity Profile {loading ? '' : '(ML Predicted)'}</h3>
+          <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Productivity Profile {loading ? '' : '(ML Predicted)'}</h3>
           <div className="grid grid-cols-2 gap-4">
-            <div className="bg-base border border-slate-700 rounded-xl p-4">
+            <div className="bg-base border border-slate-300 dark:border-slate-700 rounded-xl p-4">
               <p className="text-muted text-sm">Study Hours/wk</p>
-              <p className="text-2xl font-bold text-white mt-1">{prodData.hoursStudied}</p>
+              <p className="text-2xl font-bold text-slate-900 dark:text-white mt-1">{prodData.hoursStudied}</p>
             </div>
-            <div className="bg-base border border-slate-700 rounded-xl p-4">
+            <div className="bg-base border border-slate-300 dark:border-slate-700 rounded-xl p-4">
               <p className="text-muted text-sm">Sleep Hours/night</p>
-              <p className="text-2xl font-bold text-white mt-1">{prodData.sleepHours}</p>
+              <p className="text-2xl font-bold text-slate-900 dark:text-white mt-1">{prodData.sleepHours}</p>
             </div>
-            <div className="bg-base border border-slate-700 rounded-xl p-4">
+            <div className="bg-base border border-slate-300 dark:border-slate-700 rounded-xl p-4">
               <p className="text-muted text-sm">Motivation</p>
               <div className="mt-2"><RiskBadge risk={prodData.motivationLevel} /></div>
             </div>
-            <div className="bg-base border border-slate-700 rounded-xl p-4">
+            <div className="bg-base border border-slate-300 dark:border-slate-700 rounded-xl p-4">
               <p className="text-muted text-sm">Predicted Exam Score</p>
-              <p className="text-2xl font-bold text-white mt-1">{prodData.examScore}%</p>
+              <p className="text-2xl font-bold text-slate-900 dark:text-white mt-1">{prodData.examScore}%</p>
             </div>
           </div>
         </motion.div>
@@ -233,12 +233,12 @@ export default function Profile() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.4 }}
-        className="rounded-2xl border border-slate-700 bg-surface p-6 shadow-lg flex flex-col gap-4"
+        className="rounded-2xl border border-slate-300 dark:border-slate-700 bg-surface p-6 shadow-lg flex flex-col gap-4"
       >
-        <h3 className="text-lg font-semibold text-white">ML Model Metrics {loading ? '' : '(Live from Backend)'}</h3>
+        <h3 className="text-lg font-semibold text-slate-900 dark:text-white">ML Model Metrics {loading ? '' : '(Live from Backend)'}</h3>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm text-muted">
-            <thead className="text-xs uppercase bg-base text-white">
+            <thead className="text-xs uppercase bg-base text-slate-900 dark:text-white">
               <tr>
                 <th className="px-4 py-3 rounded-tl-lg">Model Task</th>
                 <th className="px-4 py-3">Algorithm</th>
@@ -247,26 +247,26 @@ export default function Profile() {
               </tr>
             </thead>
             <tbody>
-              <tr className="border-b border-slate-700">
-                <td className="px-4 py-3 font-medium text-white">{modelMetrics.classifier.model}</td>
+              <tr className="border-b border-slate-300 dark:border-slate-700">
+                <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">{modelMetrics.classifier.model}</td>
                 <td className="px-4 py-3">{modelMetrics.classifier.name}</td>
                 <td className="px-4 py-3">Acc: {modelMetrics.classifier.accuracy} | F1: {modelMetrics.classifier.f1}</td>
                 <td className="px-4 py-3 text-success">Deployed</td>
               </tr>
-              <tr className="border-b border-slate-700">
-                <td className="px-4 py-3 font-medium text-white">{modelMetrics.mentalHealth.model}</td>
+              <tr className="border-b border-slate-300 dark:border-slate-700">
+                <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">{modelMetrics.mentalHealth.model}</td>
                 <td className="px-4 py-3">{modelMetrics.mentalHealth.name}</td>
                 <td className="px-4 py-3">Acc: {modelMetrics.mentalHealth.accuracy} | F1: {modelMetrics.mentalHealth.f1}</td>
                 <td className="px-4 py-3 text-success">Deployed</td>
               </tr>
-              <tr className="border-b border-slate-700">
-                <td className="px-4 py-3 font-medium text-white">{modelMetrics.regressor.model}</td>
+              <tr className="border-b border-slate-300 dark:border-slate-700">
+                <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">{modelMetrics.regressor.model}</td>
                 <td className="px-4 py-3">{modelMetrics.regressor.name}</td>
                 <td className="px-4 py-3">R2: {modelMetrics.regressor.r2} | RMSE: {modelMetrics.regressor.rmse}</td>
                 <td className="px-4 py-3 text-success">Deployed</td>
               </tr>
               <tr>
-                <td className="px-4 py-3 font-medium text-white">{modelMetrics.clustering.model}</td>
+                <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">{modelMetrics.clustering.model}</td>
                 <td className="px-4 py-3">{modelMetrics.clustering.name}</td>
                 <td className="px-4 py-3">Silhouette: {modelMetrics.clustering.silhouette}</td>
                 <td className="px-4 py-3 text-success">Deployed</td>
