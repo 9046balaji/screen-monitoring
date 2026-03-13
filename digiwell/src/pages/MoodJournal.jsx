@@ -1,13 +1,18 @@
 import { useState, useEffect } from 'react';
 import { BookOpen, Smile, Frown, PenTool, Flame } from 'lucide-react';
-import { getMoodJournals, addMoodJournal } from '../api/digiwell';
+import { getMoodJournals, analyzeAndSaveMoodJournal } from '../api/digiwell';
 import toast from 'react-hot-toast';
+import AIInsightCard from '../components/ui/AIInsightCard';
+import Timer2020 from '../components/ui/Timer2020';
 
 export default function MoodJournal() {
   const [journals, setJournals] = useState([]);
   const [entry, setEntry] = useState('');
   const [moodScore, setMoodScore] = useState(3);
   const [loading, setLoading] = useState(true);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [latestAnalysis, setLatestAnalysis] = useState(null);
+  const [showTimer, setShowTimer] = useState(false);
 
   useEffect(() => {
     fetchJournals();
@@ -29,15 +34,24 @@ export default function MoodJournal() {
     e.preventDefault();
     if (!entry.trim()) return;
 
+    setAnalyzing(true);
     try {
-      await addMoodJournal(entry, moodScore);
-      toast.success('Journal entry saved!');
+      const response = await analyzeAndSaveMoodJournal(entry, moodScore);
+      toast.success('Journal entry saved and analyzed!');
       setEntry('');
       setMoodScore(3);
+      setLatestAnalysis({
+        ai_primary_emotion: response.ai_primary_emotion,
+        ai_distortion: response.ai_distortion,
+        ai_reframe: response.ai_reframe,
+        ai_microtask: response.ai_microtask
+      });
       fetchJournals();
     } catch (err) {
       console.error(err);
-      toast.error('Failed to save journal');
+      toast.error('Failed to save and analyze journal');
+    } finally {
+      setAnalyzing(false);
     }
   };
 
@@ -94,16 +108,34 @@ export default function MoodJournal() {
 
             <button
               type="submit"
-              disabled={!entry.trim()}
-              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-semibold transition-colors disabled:opacity-50"
+              disabled={!entry.trim() || analyzing}
+              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-semibold transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
             >
-              Save Entry
+              {analyzing ? <span className="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full"></span> : null}
+              {analyzing ? 'Analyzing...' : 'Save & Analyze Entry'}
             </button>
           </form>
         </div>
 
         {/* History */}
         <div className="lg:col-span-2 border border-slate-300 dark:border-slate-700 bg-surface rounded-2xl p-6 shadow-sm">
+          {latestAnalysis && (
+            <AIInsightCard 
+              analysis={latestAnalysis} 
+              onStartMicrotask={() => setShowTimer(true)} 
+            />
+          )}
+
+          {showTimer && latestAnalysis?.ai_microtask && (
+            <div className="mb-6">
+              <div className="flex justify-between items-center mb-2">
+                <h3 className="font-bold text-slate-800 dark:text-slate-200">Micro-task Active</h3>
+                <button onClick={() => setShowTimer(false)} className="text-sm text-slate-500 hover:text-slate-700">Close</button>
+              </div>
+              <Timer2020 />
+            </div>
+          )}
+
           <h2 className="text-xl font-semibold mb-6 flex items-center gap-2">
             <Flame className="w-5 h-5 text-orange-400" />
             Recent Logs

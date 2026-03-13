@@ -214,6 +214,18 @@ export const getMoodJournals = async () => {
   return res.data
 }
 
+export const analyzeAndSaveMoodJournal = async (entry, moodScore) => {
+  if (USE_MOCK) return {
+    status: "saved", entry: { date: new Date().toISOString(), entry, mood_score: moodScore, polarity: 0.5 },
+    ai_primary_emotion: "Anxious",
+    ai_distortion: ["Catastrophizing"],
+    ai_reframe: "This is a mock reframe.",
+    ai_microtask: { type: "breathing", duration_minutes: 1, instruction: "Breathe in, breathe out." }
+  };
+  const res = await axios.post(`${BASE_URL}/mood/analyze-and-save`, { entry, mood_score: moodScore });
+  return res.data;
+}
+
 export const addMoodJournal = async (entry, moodScore) => {
   if (USE_MOCK) return { status: "saved", entry: { date: new Date().toISOString(), entry, mood_score: moodScore, polarity: 0.5 } };
   const res = await axios.post(`${BASE_URL}/mood`, { entry, mood_score: moodScore })

@@ -1217,6 +1217,52 @@ def check_anomaly():
 # ── Mood Journal ──────────────────────────────────────
 MOOD_JOURNAL_PATH = os.path.join(os.path.dirname(__file__), 'data', 'mood_journal.json')
 
+from ai_service import analyze_journal
+import datetime
+
+@app.route('/api/mood/analyze-and-save', methods=['POST'])
+def analyze_and_save_mood():
+    try:
+        data = request.get_json()
+        entry_text = data.get('entry', '')
+        mood_score = data.get('mood_score', 3)
+        user_id = data.get('user_id', 'default_user')
+        
+        polarity = 0.0
+        
+        ai_result = analyze_journal(entry_text)
+        
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute('''
+            INSERT INTO mood_journal 
+            (user_id, date, entry, mood_score, polarity, ai_primary_emotion, ai_distortion, ai_reframe, ai_microtask)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            user_id,
+            datetime.datetime.now().isoformat(),
+            entry_text,
+            mood_score,
+            polarity,
+            ai_result.get('primary_emotion'),
+            json.dumps(ai_result.get('cognitive_distortions', [])),
+            ai_result.get('reframe'),
+            json.dumps(ai_result.get('micro_task', {}))
+        ))
+        conn.commit()
+        new_id = c.lastrowid
+        
+        c.execute('SELECT * FROM mood_journal WHERE id = ?', (new_id,))
+        row = dict(c.fetchone())
+        conn.close()
+        
+        row['ai_distortion'] = json.loads(row['ai_distortion']) if row.get('ai_distortion') else []
+        row['ai_microtask'] = json.loads(row['ai_microtask']) if row.get('ai_microtask') else {}
+        
+        return jsonify(row), 201
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/mood', methods=['GET', 'POST'])
 def mood_journal():
     try:
