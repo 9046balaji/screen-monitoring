@@ -7,8 +7,10 @@ import toast from 'react-hot-toast';
 import { currentUser, mentalHealthScores as mockMental, productivityData as mockProductivity } from '../data/mockData';
 import { getUserCluster, getRecommendations, getMentalHealthRisk, predictProductivity, getRelapseRisk } from '../api/digiwell';
 import { useCommitment } from '../hooks/useCommitment';
+import { useNavigate } from 'react-router-dom';
 
 export default function WellnessTips() {
+  const navigate = useNavigate();
   const { startNewCommitment } = useCommitment() || {};
   const [relapseData, setRelapseData] = useState({ risk: 0, top_features: [] });
   const [streak, setStreak] = useState(() => {
@@ -157,8 +159,10 @@ export default function WellnessTips() {
         reminder_interval_minutes: 10
       });
       toast.success("Emergency focus mode activated!");
+      navigate('/focus');
     } else {
       toast("Focus mode started (mock)", { icon: '🛡️' });
+      navigate('/focus');
     }
   };
 

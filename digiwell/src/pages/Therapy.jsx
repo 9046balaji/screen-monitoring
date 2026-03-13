@@ -4,8 +4,10 @@ import { getTherapyPlan } from '../api/digiwell';
 import CommitmentModal from '../components/ui/CommitmentModal';
 import CBTChat from '../components/therapy/CBTChat';
 import { useCommitment } from '../hooks/useCommitment';
+import { useNavigate } from 'react-router-dom';
 
 export default function Therapy() {
+  const navigate = useNavigate();
   const [plan, setPlan] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -28,7 +30,7 @@ export default function Therapy() {
     };
     await startNewCommitment(details);
     setIsModalOpen(false);
-    alert("Commitment started! Focus session is active.");
+    navigate('/focus');
   };
 
   const handleSchedule = () => {

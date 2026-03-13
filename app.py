@@ -1218,7 +1218,6 @@ def check_anomaly():
 MOOD_JOURNAL_PATH = os.path.join(os.path.dirname(__file__), 'data', 'mood_journal.json')
 
 from ai_service import analyze_journal, predict_relapse, therapy_start, therapy_agent_step
-import datetime
 import uuid
 
 @app.route('/api/therapy/session', methods=['POST'])
@@ -1336,7 +1335,7 @@ def analyze_and_save_mood():
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             user_id,
-            datetime.datetime.now().isoformat(),
+            datetime.now().isoformat(),
             entry_text,
             mood_score,
             polarity,
