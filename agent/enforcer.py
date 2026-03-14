@@ -32,12 +32,13 @@ def save_limits(limits):
         json.dump(limits, f, indent=2)
 
 def send_warning(app_name, seconds_used, limit_seconds):
-    mins_used  = seconds_used // 60
-    mins_limit = limit_seconds // 60
+    # Use ceil or float precision so it doesn't say "0 mins" for 48 seconds
+    mins_used_str = f"{seconds_used / 60:.1f}".rstrip('0').rstrip('.')
+    mins_limit_str = f"{limit_seconds / 60:.1f}".rstrip('0').rstrip('.')
     try:
         notification.notify(
             title=f'âš ï¸ DigiWell Warning â€” {app_name}',
-            message=f'You have used {app_name} for {mins_used} mins. Limit is {mins_limit} mins. App will close soon.',
+            message=f'You have used {app_name} for {mins_used_str} mins. Limit is {mins_limit_str} mins. App will close soon.',
             app_name='DigiWell',
             timeout=8
         )
@@ -87,7 +88,7 @@ def show_break_screen(duration_seconds=60, message="Time's up! Take a break. ğŸ‘
         root.overrideredirect(True)
 
         # Countdown variable
-        remaining = tk.IntVar(value=duration_seconds)
+        # remaining = tk.IntVar(value=duration_seconds)
 
         # Fonts
         big_font   = tkfont.Font(family='Segoe UI', size=64, weight='bold')
@@ -114,13 +115,12 @@ def show_break_screen(duration_seconds=60, message="Time's up! Take a break. ğŸ‘
         progress_bar = tk.Frame(progress_frame, bg='#6366F1', height=8)
         progress_bar.place(x=0, y=0, width=400)
 
-        def countdown():
-            val = remaining.get()
+        def countdown(val):
             if val <= 0:
                 root.destroy()
+                global _break_active
                 _break_active = False
                 return
-            remaining.set(val - 1)
             timer_label.config(text=f'{val}s')
             # Update progress bar
             pct = val / duration_seconds
@@ -128,9 +128,9 @@ def show_break_screen(duration_seconds=60, message="Time's up! Take a break. ğŸ‘
             # Color change as time runs out
             color = '#10B981' if pct > 0.5 else '#F59E0B' if pct > 0.2 else '#EF4444'
             timer_label.config(fg=color)
-            root.after(1000, countdown)
+            root.after(1000, countdown, val - 1)
 
-        countdown()
+        countdown(duration_seconds)
         root.mainloop()
         _break_active = False
 
@@ -245,9 +245,9 @@ def check_and_enforce(app_name, process_name, seconds_used, category='Other'):
     limit_seconds = limit.get('limit_seconds', 3600)
     mode = limit.get('mode', 'warn')  # warn / close / break / all
 
-    warn_at = int(limit_seconds * 0.8)
+    warn_at = limit_seconds - 60 if limit_seconds > 300 else int(limit_seconds * 0.8)
 
-    # Warning at 80%
+    # Warning
     if seconds_used >= warn_at and app_name not in _warned:
         _warned.add(app_name)
         send_warning(app_name, seconds_used, limit_seconds)
