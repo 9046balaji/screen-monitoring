@@ -1,6 +1,7 @@
 import json
 import os
 import pickle
+import requests
 from cachetools import cached, TTLCache
 
 # In-memory LRU cache for predictions (max 100 items, ttl 30s)
@@ -31,18 +32,56 @@ except Exception as e:
 
 def analyze_journal(text: str, context: dict = None) -> dict:
     """
-    Returns mock analysis for a journal entry.
+    Returns AI analysis for a journal entry using Ollama.
     """
-    return {
-        "primary_emotion": "Anxious",
-        "cognitive_distortions": ["Catastrophizing", "All-or-Nothing Thinking"],
-        "reframe": "I notice you are catastrophizing your screen time today. Missing one target doesn't ruin your entire progress. Let's try a small reset.",
-        "micro_task": {
-            "type": "breathing",
+    import json
+    import requests
+
+    prompt = f"""
+    You are a cognitive behavioral therapy assistant. Analyze the user's journal entry.
+    Journal entry: "{text}"
+    
+    Return a pure JSON object in exactly this format with no other text (no markdown blocks like ```json):
+    {{
+        "primary_emotion": "Primary emotion felt (e.g., Anxious, Frustrated, Calm)",
+        "cognitive_distortions": ["List of distortions if any, e.g., All-or-Nothing Thinking"],
+        "reframe": "A compassionate sentence reframing their negative thoughts.",
+        "micro_task": {{
+            "type": "breathing|stretching|focus",
             "duration_minutes": 1,
-            "instruction": "Take 5 deep breaths, focusing purely on inhaling for 4 seconds, holding for 4, and exhaling for 4."
+            "instruction": "A simple 1-2 minute task to help them process."
+        }}
+    }}
+    """
+    try:
+        response = requests.post(
+            "http://localhost:11434/api/generate",
+            json={"model": "gemma3:1b", "prompt": prompt, "stream": False},
+            timeout=30
+        )
+        response.raise_for_status()
+        text_resp = response.json().get("response", "{}")
+        
+        # Simple extraction of JSON if markdown is returned
+        import re
+        match = re.search(r'\{.*\}', text_resp, re.DOTALL)
+        if match:
+            text_resp = match.group(0)
+            
+        return json.loads(text_resp)
+    except Exception as e:
+        print("analyze_journal Ollama Error:", e)
+        # Fallback response
+        return {
+            "primary_emotion": "Unknown",
+            "cognitive_distortions": [],
+            "reframe": "I notice you are reflecting on your day. Take a moment to breathe and reset.",
+            "micro_task": {
+                "type": "breathing",
+                "duration_minutes": 1,
+                "instruction": "Take 5 deep breaths to center yourself."
+            }
         }
-    }
 
 @cached(prediction_cache)
 def predict_relapse(features_json: str) -> dict:
@@ -104,26 +143,37 @@ Instructions:
 3. Suggest a tip based on the Web Advice.
 """
 
-    # For the Hackathon / Demo, we generate an intelligent simulated answer based on the context:
-    if results:
-        extracted_insight = results[0]['body'][:150] + "..."
-    else:
-        extracted_insight = "mindfulness and building slow momentum."
-        
-    reply_text = (
-        f"Right now I see you've used {screen_time_mins} mins of screen time this hour. "
-        f"Based on what you just said, here's an idea: \"{extracted_insight}\" "
-        f"Let's break the cycle and take a 5 minute reset loop right away. You've got this!"
-    )
+    prompt_payload = {
+        "model": "gemma3:1b",
+        "prompt": llm_system_prompt,
+        "stream": False
+    }
+
+    try:
+        response = requests.post("http://localhost:11434/api/generate", json=prompt_payload, timeout=30)
+        response.raise_for_status()
+        reply_text = response.json().get("response", "I could not generate a response at this time.")
+    except Exception as e:
+        print("Ollama Error in coach_agent_step:", e)
+        # Fallback response
+        if results:
+            extracted_insight = results[0]['body'][:150] + "..."
+        else:
+            extracted_insight = "mindfulness and building slow momentum."
+            
+        reply_text = (
+            f"Right now I see you've used {screen_time_mins} mins of screen time this hour. "
+            f"Based on what you just said, here's an idea: \"{extracted_insight}\" "
+            f"Let's break the cycle and take a 5 minute reset loop right away. You've got this! (Failed to reach Ollama AI)"
+        )
+
     return reply_text
 
 
 def suggest_planner_changes(context):
     try:
-        from openai import OpenAI
-        import os
         import json
-        client = OpenAI(api_key=os.environ.get('OPENAI_API_KEY'))
+        import urllib.request
         
         prompt = f"""
         You are a schedule optimization coach. Given the user's data:
@@ -131,16 +181,27 @@ def suggest_planner_changes(context):
         
         Provide 3 prioritized suggestions to improve adherence. Return purely in JSON format:
         [
-          {{"severity": "high|medium|low", "action": "description of suggestion"}}
+          {{"severity": "high" | "medium" | "low", "action": "description of suggestion"}}
         ]
         """
         
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7
+        req = urllib.request.Request(
+            "http://localhost:11434/api/generate",
+            data=json.dumps({"model": "gemma3:1b", "prompt": prompt, "stream": False}).encode("utf-8"),
+            headers={"Content-Type": "application/json"}
         )
-        return json.loads(response.choices[0].message.content)
+        
+        with urllib.request.urlopen(req, timeout=30) as response:
+            result = json.loads(response.read().decode())
+            text = result.get("response", "[]")
+            
+            # Simple heuristic to extract JSON array if there's markdown formatting
+            import re
+            match = re.search(r'\[.*\]', text, re.DOTALL)
+            if match:
+                text = match.group(0)
+            
+            return json.loads(text)
     except Exception as e:
-        print("LLM Suggestion Error:", e)
+        print("LLM Suggestion Error (Ollama):", e)
         return []

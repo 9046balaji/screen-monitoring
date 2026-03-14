@@ -1924,7 +1924,7 @@ Guidelines:
                     "prompt": full_prompt, 
                     "stream": False
                 },
-                timeout=15
+                timeout=30
             )
             ollama_response.raise_for_status()
             reply = ollama_response.json().get("response", "I couldn't generate a response.")
