@@ -241,95 +241,57 @@ def addiction_heatmap():
         conn = get_db_connection()
         c = conn.cursor()
         
-        # Query usage_logs for social/entertainment usage
         c.execute('''
-            SELECT date, sum(seconds) as total_seconds 
-            FROM usage_logs 
-            WHERE category LIKE '%Social%' 
-               OR category LIKE '%Entertainment%' 
-               OR category LIKE '%Video%' 
-            GROUP BY date
+            SELECT 
+                strftime('%w', timestamp) as weekday,
+                strftime('%H', timestamp) as hour,
+                SUM(duration_seconds) as total_seconds 
+            FROM screen_usage 
+            WHERE category IN ('social', 'entertainment')
+            GROUP BY weekday, hour
         ''')
         rows = c.fetchall()
         conn.close()
 
-        days_order = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+        day_mapping = {"1": "Mon", "2": "Tue", "3": "Wed", "4": "Thu", "5": "Fri", "6": "Sat", "0": "Sun"}
+        data_map = {d: {h: 0 for h in range(24)} for d in day_mapping.values()}
         
-        if not rows:
-            # Generate mock records if no database records
-            import random
-            heatmap_data = []
-            for d in days_order:
-                day_hours = []
-                for h in range(24):
-                    # Mock logic: higher risk in evenings and weekends
-                    risk = "Low"
-                    if d in ["Sat", "Sun"]:
-                        if 10 <= h <= 23:
-                            risk = random.choice(["Medium", "High", "Very High"])
-                    else:
-                        if 18 <= h <= 23:
-                            risk = random.choice(["Medium", "High", "Very High"])
-                        elif 12 <= h <= 13:
-                            risk = "Medium"
-                    
-                    day_hours.append({
-                        "hour": h,
-                        "risk": risk
-                    })
-                heatmap_data.append({
-                    "day": d,
-                    "hours": day_hours
-                })
-            return jsonify(heatmap_data)
-
-        # Process real records
-        day_totals = {d: 0 for d in days_order}
         for r in rows:
-            try:
-                dt = datetime.strptime(r['date'], "%Y-%m-%d")
-                d_name = days_order[dt.weekday()]
-                day_totals[d_name] += r['total_seconds']
-            except Exception:
-                pass
-                
+            weekday = r['weekday']
+            if weekday is None: continue
+            d_name = day_mapping.get(str(weekday))
+            hour_val = r['hour']
+            if d_name and hour_val is not None:
+                data_map[d_name][int(hour_val)] = r['total_seconds']
+        
+        days_order = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
         heatmap_data = []
+
+        import random
+        has_real_data = len(rows) > 0
+
         for d in days_order:
             day_hours = []
-            total_secs = day_totals[d]
-            total_hours_used = total_secs / 3600.0
-            
             for h in range(24):
-                # Distribute usage approximately based on typical patterns since we only have daily totals in usage_logs
-                hour_fraction = 0
-                if d in ["Sat", "Sun"]:
-                    if 10 <= h <= 23: hour_fraction = 1.0 / 14.0
+                if has_real_data:
+                    secs = data_map[d][h]
+                    if secs > 2700: risk = "Very High"
+                    elif secs > 1800: risk = "High"
+                    elif secs > 900: risk = "Medium"
+                    elif secs > 0: risk = "Low"
+                    else: risk = "None"
                 else:
-                    if 18 <= h <= 23: hour_fraction = 1.0 / 6.0
-                    
-                hour_usage = total_hours_used * hour_fraction
-                
-                if hour_usage == 0:
                     risk = "None"
-                elif hour_usage < 0.25:
-                    risk = "Low"
-                elif hour_usage < 0.5:
-                    risk = "Medium"
-                elif hour_usage < 1.0:
-                    risk = "High"
-                else:
-                    risk = "Very High"
-                    
-                day_hours.append({
-                    "hour": h,
-                    "risk": risk
-                })
+                    if d in ["Sat", "Sun"] and 10 <= h <= 23:
+                        risk = random.choice(["Medium", "High", "Very High"])
+                    elif d not in ["Sat", "Sun"] and 18 <= h <= 23:
+                        risk = random.choice(["Medium", "High", "Very High"])
+                    elif d not in ["Sat", "Sun"] and 12 <= h <= 13:
+                        risk = "Medium"
                 
-            heatmap_data.append({
-                "day": d,
-                "hours": day_hours
-            })
-
+                day_hours.append({"hour": h, "risk": risk})
+            heatmap_data.append({"day": d, "hours": day_hours})
+            
         return jsonify(heatmap_data)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -1049,7 +1011,8 @@ def focus_start():
         result = start_focus_session(
             duration_minutes=data.get('duration_minutes', 25),
             block_list=data.get('block_list', None),
-            session_name=data.get('session_name', 'Focus Session')
+            session_name=data.get('session_name', 'Focus Session'),
+            block_categories=data.get('block_categories', ['social', 'video', 'entertainment'])
         )
         return jsonify(result)
     except Exception as e:
@@ -1893,5 +1856,405 @@ def complete_commitment(commitment_id):
         return jsonify({"error": str(e)}), 500
 
 
+# ═══════════════════════════════════
+# Desktop Screen Usage Monitoring APIs
+# ═══════════════════════════════════
+@app.route('/api/usage/daily', methods=['GET'])
+def get_daily_usage():
+    try:
+        conn = get_db_connection()
+        c = conn.cursor()
+        
+        # We define "daily" as today based on timestamp.
+        # Alternatively we can extract the date from timestamp
+        # and match today's date.
+        today = datetime.now().strftime('%Y-%m-%d')
+        
+        c.execute('''
+            SELECT 
+                SUM(duration_seconds) as total_seconds,
+                SUM(CASE WHEN category IN ('social', 'entertainment') THEN duration_seconds ELSE 0 END) as distracted_time,
+                SUM(CASE WHEN category IN ('productivity', 'development', 'work') THEN duration_seconds ELSE 0 END) as productivity_time
+            FROM screen_usage
+            WHERE date(timestamp) = ?
+        ''', (today,))
+        
+        row = c.fetchone()
+        
+        c.execute('''
+            SELECT app_name, SUM(duration_seconds) as total_seconds
+            FROM screen_usage
+            WHERE date(timestamp) = ?
+            GROUP BY app_name
+            ORDER BY total_seconds DESC
+            LIMIT 10
+        ''', (today,))
+        
+        top_apps = [{"app_name": r["app_name"], "total_seconds": r["total_seconds"]} for r in c.fetchall()]
+        
+        c.execute("SELECT COUNT(*) as count FROM focus_sessions WHERE date(start_ts) = ?", (today,))
+        focus_count = c.fetchone()["count"]
+        
+        conn.close()
+        
+        total = row["total_seconds"] or 0
+        return jsonify({
+            "total_screen_time_seconds": total,
+            "social_media_time_seconds": row["distracted_time"] or 0,
+            "productivity_time_seconds": row["productivity_time"] or 0,
+            "focus_sessions_count": focus_count,
+            "top_apps": top_apps
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/usage/hourly', methods=['GET'])
+def get_hourly_usage():
+    try:
+        conn = get_db_connection()
+        c = conn.cursor()
+        
+        today = datetime.now().strftime('%Y-%m-%d')
+        
+        c.execute('''
+            SELECT strftime('%H', timestamp) as hour, SUM(duration_seconds) as total_seconds
+            FROM screen_usage
+            WHERE date(timestamp) = ?
+            GROUP BY hour
+            ORDER BY hour ASC
+        ''', (today,))
+        
+        hourly_data = [{"hour": int(r["hour"]), "total_seconds": r["total_seconds"]} for r in c.fetchall()]
+        
+        conn.close()
+        return jsonify(hourly_data)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+def start_screen_monitor_background():
+    try:
+        from monitor.screen_monitor import ScreenMonitor
+        import threading
+        
+        def run_monitor():
+            monitor = ScreenMonitor(poll_interval=5)
+            monitor.run()
+            
+        monitor_thread = threading.Thread(target=run_monitor, daemon=True)
+        monitor_thread.start()
+        print("Started screen monitor service in background")
+    except Exception as e:
+        print(f"Failed to start screen monitor: {e}")
+
 if __name__ == '__main__':
+    start_screen_monitor_background()
     app.run(debug=True, port=5000)
+
+
+# ── Weekly Timetable / Planner ────────────────────────────────────────
+
+import uuid
+from datetime import datetime, timedelta
+
+@app.route('/api/timetable', methods=['GET'])
+def list_timetables():
+    try:
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute('SELECT * FROM weekly_timetable WHERE user_id = ?', ('local',))
+        tables = [dict(row) for row in c.fetchall()]
+        
+        for t in tables:
+            c.execute('SELECT * FROM weekly_timetable_slots WHERE timetable_id = ? ORDER BY day_of_week, start_time', (t['id'],))
+            t['slots'] = [dict(row) for row in c.fetchall()]
+            
+        conn.close()
+        return jsonify(tables)
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+
+@app.route('/api/timetable', methods=['POST'])
+def create_timetable():
+    try:
+        data = request.json
+        t_id = uuid.uuid4().hex[:8]
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute('INSERT INTO weekly_timetable (id, name, timezone) VALUES (?, ?, ?)',
+            (t_id, data.get('name', 'My Timetable'), data.get('timezone', 'UTC')))
+        conn.commit()
+        conn.close()
+        return jsonify(id=t_id, status="created")
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+
+@app.route('/api/timetable/<t_id>', methods=['PUT', 'DELETE'])
+def modify_timetable(t_id):
+    try:
+        conn = get_db_connection()
+        c = conn.cursor()
+        if request.method == 'DELETE':
+            c.execute('DELETE FROM weekly_timetable_slots WHERE timetable_id = ?', (t_id,))
+            c.execute('DELETE FROM weekly_timetable WHERE id = ?', (t_id,))
+            conn.commit()
+            conn.close()
+            return jsonify(status="deleted")
+        else:
+            data = request.json
+            c.execute('UPDATE weekly_timetable SET name = ?, timezone = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+                (data.get('name'), data.get('timezone'), t_id))
+            conn.commit()
+            conn.close()
+            return jsonify(status="updated")
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+
+@app.route('/api/timetable/<t_id>/slot', methods=['POST'])
+def create_slot(t_id):
+    try:
+        data = request.json
+        s_id = uuid.uuid4().hex[:8]
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute('''
+            INSERT INTO weekly_timetable_slots 
+            (id, timetable_id, day_of_week, start_time, end_time, title, description, category, focus_mode)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            s_id, t_id, data.get('day_of_week'), data.get('start_time'), data.get('end_time'),
+            data.get('title'), data.get('description', ''), data.get('category'), bool(data.get('focus_mode', False))
+        ))
+        conn.commit()
+        conn.close()
+        return jsonify(id=s_id, status="created")
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+
+@app.route('/api/timetable/slot/<s_id>', methods=['PUT', 'DELETE'])
+def modify_slot(s_id):
+    try:
+        conn = get_db_connection()
+        c = conn.cursor()
+        if request.method == 'DELETE':
+            c.execute('DELETE FROM weekly_timetable_slots WHERE id = ?', (s_id,))
+            conn.commit()
+            conn.close()
+            return jsonify(status="deleted")
+        else:
+            data = request.json
+            c.execute('''
+                UPDATE weekly_timetable_slots SET 
+                day_of_week = ?, start_time = ?, end_time = ?, title = ?, 
+                description = ?, category = ?, focus_mode = ? 
+                WHERE id = ?
+            ''', (
+                data.get('day_of_week'), data.get('start_time'), data.get('end_time'),
+                data.get('title'), data.get('description', ''), data.get('category'), 
+                bool(data.get('focus_mode', False)), s_id
+            ))
+            conn.commit()
+            conn.close()
+            return jsonify(status="updated")
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+
+@app.route('/api/timetable/<t_id>/generate-daily', methods=['POST'])
+def generate_daily_tasks(t_id):
+    try:
+        target_date = request.args.get('date') # YYYY-MM-DD
+        if not target_date:
+            return jsonify(error="date query param is required"), 400
+            
+        dt = datetime.strptime(target_date, '%Y-%m-%d')
+        # python weekday: 0=Mon, 6=Sun
+        day_of_week = dt.weekday()
+        
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute('SELECT * FROM weekly_timetable_slots WHERE timetable_id = ? AND day_of_week = ?', (t_id, day_of_week))
+        slots = [dict(row) for row in c.fetchall()]
+        
+        generated = []
+        for s in slots:
+            # Check if this slot was already generated for this date
+            c.execute('SELECT 1 FROM daily_tasks WHERE date = ? AND slot_id = ?', (target_date, s['id']))
+            if c.fetchone():
+                continue
+            
+            task_id = uuid.uuid4().hex[:8]
+            planned_start = f"{target_date}T{s['start_time']}:00"
+            planned_end = f"{target_date}T{s['end_time']}:00"
+            
+            # calculate planned duration
+            start_dt = datetime.strptime(planned_start, '%Y-%m-%dT%H:%M:%S')
+            end_dt = datetime.strptime(planned_end, '%Y-%m-%dT%H:%M:%S')
+            dur = int((end_dt - start_dt).total_seconds() / 60)
+            
+            meta = '{"auto_focus": true}' if s['focus_mode'] else '{}'
+            
+            c.execute('''
+                INSERT INTO daily_tasks 
+                (id, date, slot_id, planned_start, planned_end, title, description, category, duration_planned_minutes, metadata)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                task_id, target_date, s['id'], planned_start, planned_end, 
+                s['title'], s['description'], s['category'], dur, meta
+            ))
+            generated.append({
+                "id": task_id, "date": target_date, "title": s['title'], "planned_start": planned_start, "planned_end": planned_end
+            })
+            
+        conn.commit()
+        conn.close()
+        return jsonify(generated)
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+
+@app.route('/api/dailytasks', methods=['GET'])
+def list_daily_tasks():
+    try:
+        target_date = request.args.get('date')
+        if not target_date:
+            return jsonify(error="date query param is required"), 400
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute('SELECT * FROM daily_tasks WHERE date = ? ORDER BY planned_start', (target_date,))
+        tasks = [dict(row) for row in c.fetchall()]
+        for t in tasks:
+            if t.get('metadata'):
+                import json
+                try: t['metadata'] = json.loads(t['metadata'])
+                except: pass
+        conn.close()
+        return jsonify(tasks)
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+
+@app.route('/api/dailytasks/<task_id>/start', methods=['POST'])
+def start_daily_task(task_id):
+    try:
+        now_ts = datetime.utcnow().isoformat()
+        conn = get_db_connection()
+        c = conn.cursor()
+        
+        c.execute('UPDATE daily_tasks SET status = "running", actual_start = ? WHERE id = ?', (now_ts, task_id))
+        
+        # Check if we need to auto start focus mode
+        c.execute('SELECT metadata, duration_planned_minutes, title FROM daily_tasks WHERE id = ?', (task_id,))
+        task = dict(c.fetchone())
+        metadata = task.get('metadata', "{}")
+        import json
+        try: meta_dict = json.loads(metadata)
+        except: meta_dict = {}
+        
+        if meta_dict.get('auto_focus'):
+            c.execute('INSERT INTO focus_sessions (id, commitment_id, start_ts, duration_minutes, status) VALUES (?, ?, ?, ?, ?)',
+              (uuid.uuid4().hex[:8], 'task_'+task_id, now_ts, task.get('duration_planned_minutes', 30), 'scheduled'))
+              
+        conn.commit()
+        conn.close()
+        return jsonify(id=task_id, status="running", actual_start=now_ts)
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+
+@app.route('/api/dailytasks/<task_id>/complete', methods=['POST'])
+def complete_daily_task(task_id):
+    try:
+        now_dt = datetime.utcnow()
+        now_ts = now_dt.isoformat()
+        conn = get_db_connection()
+        c = conn.cursor()
+        
+        c.execute('SELECT actual_start FROM daily_tasks WHERE id = ?', (task_id,))
+        row = c.fetchone()
+        actual_start_ts = row['actual_start'] if row and row['actual_start'] else now_ts
+        start_dt = datetime.fromisoformat(actual_start_ts)
+        dur = int((now_dt - start_dt).total_seconds() / 60)
+        
+        c.execute('UPDATE daily_tasks SET status = "completed", actual_end = ?, duration_actual_minutes = ? WHERE id = ?', 
+                  (now_ts, dur, task_id))
+        conn.commit()
+        conn.close()
+        return jsonify(id=task_id, status="completed", actual_end=now_ts, duration_actual_minutes=dur)
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+
+@app.route('/api/dailytasks/<task_id>/skip', methods=['POST'])
+def skip_daily_task(task_id):
+    try:
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute('UPDATE daily_tasks SET status = "skipped" WHERE id = ?', (task_id,))
+        conn.commit()
+        conn.close()
+        return jsonify(id=task_id, status="skipped")
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+
+@app.route('/api/planner/adherence', methods=['POST', 'GET'])
+def planner_adherence():
+    try:
+        target_date = request.args.get('date')
+        if not target_date:
+            return jsonify(error="date param required"), 400
+            
+        conn = get_db_connection()
+        c = conn.cursor()
+        
+        c.execute('SELECT * FROM daily_tasks WHERE date = ?', (target_date,))
+        tasks = [dict(row) for row in c.fetchall()]
+        
+        planned_tot = sum([t['duration_planned_minutes'] or 0 for t in tasks])
+        actual_tot = sum([t['duration_actual_minutes'] or 0 for t in tasks])
+        sched_count = len(tasks)
+        comp_count = len([t for t in tasks if t['status'] == 'completed'])
+        
+        score = 0
+        if sched_count > 0:
+            tc_ratio = comp_count / sched_count
+            ta_ratio = min(actual_tot / max(planned_tot, 1), 1)
+            score = 100 * (0.6 * tc_ratio + 0.4 * ta_ratio)
+            
+        rep_id = uuid.uuid4().hex[:8]
+        c.execute('''
+            INSERT INTO adherence_reports 
+            (id, date, planned_total_minutes, actual_total_minutes, completed_tasks, scheduled_tasks, adherence_score)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (rep_id, target_date, planned_tot, actual_tot, comp_count, sched_count, score))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify(
+            planned_total_minutes=planned_tot,
+            actual_total_minutes=actual_tot,
+            completed_tasks=comp_count,
+            scheduled_tasks=sched_count,
+            adherence_score=round(score, 1)
+        )
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+
+@app.route('/api/dailytasks/<task_id>', methods=['PATCH'])
+def patch_daily_task(task_id):
+    try:
+        data = request.json
+        conn = get_db_connection()
+        c = conn.cursor()
+        
+        fields = []
+        values = []
+        for k in ['status', 'actual_start', 'actual_end', 'duration_actual_minutes', 'planned_start', 'planned_end']:
+            if k in data:
+                fields.append(f"{k} = ?")
+                values.append(data[k])
+                
+        if fields:
+            values.append(task_id)
+            c.execute(f"UPDATE daily_tasks SET {', '.join(fields)} WHERE id = ?", tuple(values))
+            conn.commit()
+            
+        conn.close()
+        return jsonify(status="updated")
+    except Exception as e:
+        return jsonify(error=str(e)), 500
