@@ -10,6 +10,8 @@ import {
   updateWeeklyPlanTask,
   deleteWeeklyPlanTask,
   reorderWeeklyPlanTasks,
+  getDailyPlan,
+  setDailyPlanTaskStatus,
 } from '../api/digiwell';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -29,6 +31,7 @@ const EMPTY_FORM = {
 
 export default function WeeklyPlanPage() {
   const [tasks, setTasks] = useState([]);
+  const [dayCompletion, setDayCompletion] = useState({});
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [loading, setLoading] = useState(true);
@@ -45,11 +48,51 @@ export default function WeeklyPlanPage() {
     return map;
   }, [tasks]);
 
+  const formatDate = (dt) => {
+    const y = dt.getFullYear();
+    const m = String(dt.getMonth() + 1).padStart(2, '0');
+    const d = String(dt.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
+
+  const getDateForDayOfCurrentWeek = (day) => {
+    const now = new Date();
+    const mondayOffset = (now.getDay() + 6) % 7;
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - mondayOffset);
+    const target = new Date(monday);
+    target.setDate(monday.getDate() + day);
+    return formatDate(target);
+  };
+
+  const loadDayCompletion = async () => {
+    try {
+      const daily = await Promise.all(
+        DAYS.map((_, day) => getDailyPlan(getDateForDayOfCurrentWeek(day)))
+      );
+      const statusMap = {};
+      daily.forEach((res, day) => {
+        const planned = Number(res?.summary?.planned || 0);
+        const completed = Number(res?.summary?.completed || 0);
+        statusMap[day] = {
+          date: getDateForDayOfCurrentWeek(day),
+          planned,
+          completed,
+          isCompleted: planned > 0 && completed === planned,
+        };
+      });
+      setDayCompletion(statusMap);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const load = async () => {
     try {
       setLoading(true);
       const data = await getWeeklyPlanTasks();
       setTasks(Array.isArray(data) ? data : []);
+      await loadDayCompletion();
     } catch (err) {
       console.error(err);
       toast.error('Failed to load weekly plan');
@@ -152,6 +195,33 @@ export default function WeeklyPlanPage() {
     }
   };
 
+  const toggleDayCompletion = async (day) => {
+    const dayTasks = grouped[day] || [];
+    if (dayTasks.length === 0) {
+      toast('No tasks planned for this day');
+      return;
+    }
+
+    const date = getDateForDayOfCurrentWeek(day);
+    const targetStatus = dayCompletion?.[day]?.isCompleted ? 'pending' : 'completed';
+    try {
+      await Promise.all(
+        dayTasks.map((task) =>
+          setDailyPlanTaskStatus({
+            task_id: task.id,
+            date,
+            status: targetStatus,
+          })
+        )
+      );
+      toast.success(`${DAYS[day]} marked as ${targetStatus === 'completed' ? 'completed' : 'not completed'}`);
+      await loadDayCompletion();
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to update day status');
+    }
+  };
+
   const handleSeedDemo = async () => {
     try {
       setSeeding(true);
@@ -237,10 +307,26 @@ export default function WeeklyPlanPage() {
                   <div key={dayName} className="w-[280px] shrink-0 bg-surface rounded-xl border border-slate-200 dark:border-slate-700 p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <h3 className="font-semibold text-slate-900 dark:text-white">{dayName}</h3>
-                  <button onClick={() => openAdd(day)} className="text-xs px-2 py-1 rounded bg-indigo-100 text-indigo-700 hover:bg-indigo-200">
-                    <Plus className="w-3 h-3 inline mr-1" /> Add
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => toggleDayCompletion(day)}
+                      className={`text-xs px-2 py-1 rounded ${dayCompletion?.[day]?.isCompleted ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'}`}
+                    >
+                      {dayCompletion?.[day]?.isCompleted ? 'Completed' : 'Mark Complete'}
+                    </button>
+                    <button onClick={() => openAdd(day)} className="text-xs px-2 py-1 rounded bg-indigo-100 text-indigo-700 hover:bg-indigo-200">
+                      <Plus className="w-3 h-3 inline mr-1" /> Add
+                    </button>
+                  </div>
                 </div>
+                <p className="text-[10px] text-slate-500">
+                  {dayCompletion?.[day]?.completed || 0}/{dayCompletion?.[day]?.planned || 0} completed this week
+                </p>
+                {!!dayCompletion?.[day]?.isCompleted && (
+                  <p className="text-xs rounded-md border border-emerald-200 bg-emerald-50 text-emerald-700 px-2 py-1 dark:border-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300">
+                    Day Completed
+                  </p>
+                )}
 
                 {dayTasks.length === 0 ? (
                   <p className="text-xs text-slate-500 border border-dashed border-slate-300 dark:border-slate-700 rounded p-3">No tasks planned.</p>

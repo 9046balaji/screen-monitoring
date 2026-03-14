@@ -13,8 +13,7 @@ export default function AppDonutChart({ data: initialData, delay = 0 }) {
         if (res && res.top_apps) {
           const formatted = res.top_apps.map(app => ({
             name: app.app_name,
-            value: Math.round(app.total_seconds / 60),
-            color: `#${Math.floor(Math.random()*16777215).toString(16)}` // random color, or could use predefined array
+            minutes: Math.round((app.total_seconds || 0) / 60),
           }));
           // Add predefined colors to formatted
           const COLORS = ['#ef4444', '#f59e0b', '#f97316', '#3b82f6', '#10b981', '#8b5cf6', '#6366f1'];

@@ -1,280 +1,207 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import toast from 'react-hot-toast';
-import { currentUser, userPersonas, mentalHealthScores as mockMental, productivityData as mockProductivity, modelMetrics as mockMetrics } from '../data/mockData';
-import RiskBadge from '../components/ui/RiskBadge';
-import PersonaCard from '../components/cards/PersonaCard';
-import MentalHealthCard from '../components/cards/MentalHealthCard';
-import { getUserCluster, getMentalHealthRisk, predictProductivity, getModelReport } from '../api/digiwell';
+import { Award, CalendarDays, Mail, Trophy } from 'lucide-react';
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
+import { getProfileSummary } from '../api/digiwell';
+
+const CHART_COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#14B8A6'];
+
+function MetricCard({ label, value, hint }) {
+  return (
+    <div className="rounded-xl border border-slate-300 dark:border-slate-700 bg-base p-4">
+      <p className="text-xs text-slate-600 dark:text-slate-400">{label}</p>
+      <p className="mt-1 text-2xl font-bold text-slate-900 dark:text-white">{value}</p>
+      {hint ? <p className="mt-1 text-xs text-slate-500 dark:text-slate-500">{hint}</p> : null}
+    </div>
+  );
+}
+
+function AchievementCard({ item }) {
+  const progress = item.target > 0 ? Math.min(100, Math.round((item.progress / item.target) * 100)) : 0;
+  return (
+    <div className={`rounded-xl border p-4 ${item.unlocked ? 'border-emerald-500/40 bg-emerald-500/10' : 'border-slate-300 dark:border-slate-700 bg-base'}`}>
+      <div className="flex items-center justify-between">
+        <h4 className="text-sm font-semibold text-slate-900 dark:text-white">{item.title}</h4>
+        <Trophy size={16} className={item.unlocked ? 'text-emerald-500' : 'text-slate-500'} />
+      </div>
+      <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">{item.description}</p>
+      <div className="mt-3 h-2 rounded-full bg-slate-200 dark:bg-slate-800">
+        <div className="h-2 rounded-full bg-primary" style={{ width: `${progress}%` }} />
+      </div>
+      <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">{item.progress} / {item.target}</p>
+    </div>
+  );
+}
 
 export default function Profile() {
-  const [goal, setGoal] = useState(currentUser.dailyGoalMinutes);
-  const [platform, setPlatform] = useState(currentUser.platform);
-  const [profession, setProfession] = useState(currentUser.profession);
-
-  const [activePersona, setActivePersona] = useState(currentUser.cluster);
-  const [mentalScores, setMentalScores] = useState(mockMental);
-  const [prodData, setProdData] = useState(mockProductivity);
-  const [modelMetrics, setModelMetrics] = useState(mockMetrics);
+  const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function fetchProfileData() {
-      try {
-        const [segRes, mentalRes, prodRes, reportRes] = await Promise.allSettled([
-          getUserCluster({
-            time_spent: 6.3,
-            age: currentUser.age,
-            income: currentUser.income,
-            platform_risk_score: platform === 'Instagram' ? 3 : platform === 'YouTube' ? 2 : 2,
-          }),
-          getMentalHealthRisk({
-            distraction_score: mockMental.distractionScore,
-            concentration_score: mockMental.concentrationScore,
-            depression_score: mockMental.depressionScore,
-            interest_fluctuation: 3,
-            sleep_issues_score: mockMental.sleepIssuesScore,
-            purposeless_usage: 4,
-            distracted_when_busy: 3,
-            restlessness_score: mockMental.restlessnessScore,
-            worries_score: 3,
-            comparison_score: 3,
-            comparison_feeling: 3,
-            validation_seeking: 3,
-            avg_daily_usage: 6.3,
-            age: currentUser.age,
-          }),
-          predictProductivity({
-            hours_studied: mockProductivity.hoursStudied,
-            attendance: mockProductivity.attendance,
-            sleep_hours: Math.round(mockProductivity.sleepHours),
-            previous_scores: mockProductivity.examScore,
-            tutoring_sessions: 1,
-            physical_activity: mockProductivity.physicalActivity,
-            parental_involvement_encoded: 1,
-            access_to_resources_encoded: 1,
-            extracurricular_encoded: 0,
-            motivation_encoded: mockProductivity.motivationLevel === 'Low' ? 0 : mockProductivity.motivationLevel === 'Medium' ? 1 : 2,
-            internet_access_encoded: 1,
-            family_income_encoded: 1,
-            teacher_quality_encoded: 1,
-            school_type_encoded: 0,
-            peer_influence_encoded: 1,
-            learning_disabilities_encoded: 0,
-            parental_education_encoded: 1,
-            distance_encoded: 1,
-            gender_encoded: currentUser.gender === 'male' ? 0 : 1,
-          }),
-          getModelReport(),
-        ]);
+    let mounted = true;
+    getProfileSummary()
+      .then((data) => {
+        if (mounted) setSummary(data);
+      })
+      .catch((err) => {
+        console.error('Failed to load profile summary:', err);
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
 
-        if (segRes.status === 'fulfilled' && segRes.value?.persona) {
-          setActivePersona(segRes.value.persona);
-        }
-
-        if (mentalRes.status === 'fulfilled') {
-          setMentalScores(prev => ({
-            ...prev,
-            overallRisk: mentalRes.value.prediction || prev.overallRisk,
-            riskScore: mentalRes.value.risk_score || prev.riskScore,
-          }));
-        }
-
-        if (prodRes.status === 'fulfilled') {
-          const score = prodRes.value.predicted_exam_score || mockProductivity.examScore;
-          const prodScore = prodRes.value.productivity_score || mockProductivity.productivityScore;
-          setProdData(prev => ({
-            ...prev,
-            examScore: Math.round(score),
-            productivityScore: prodScore,
-            motivationLevel: prodScore >= 0.7 ? 'High' : prodScore >= 0.4 ? 'Medium' : 'Low',
-          }));
-        }
-
-        if (reportRes.status === 'fulfilled') {
-          const r = reportRes.value;
-          setModelMetrics({
-            classifier: { name: r.usage_classifier?.best_model || 'RandomForest', accuracy: r.usage_classifier?.accuracy || 0.37, f1: r.usage_classifier?.f1_score || 0.37, model: 'Usage Category' },
-            mentalHealth: { name: r.mental_health_clf?.best_model || 'GradientBoosting', accuracy: r.mental_health_clf?.accuracy || 0.91, f1: r.mental_health_clf?.f1_score || 0.91, model: 'Mental Health Risk' },
-            regressor: { name: r.productivity_reg?.best_model || 'Ridge Regressor', r2: r.productivity_reg?.r2 || 0.69, rmse: r.productivity_reg?.rmse || 2.1, model: 'Productivity Score' },
-            clustering: { name: `K-Means (k=${r.user_segmentation?.k || 5})`, silhouette: r.user_segmentation?.silhouette || 0.22, model: 'User Segmentation' },
-          });
-        }
-      } catch (err) {
-        console.error('Failed to fetch profile data:', err);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchProfileData();
+    return () => {
+      mounted = false;
+    };
   }, []);
 
-  const handleSave = () => {
-    toast.success('Profile updated successfully!');
-  };
+  const user = summary?.user_info || {};
+  const product = summary?.productivity_summary || {};
+  const streak = summary?.streak_statistics || {};
+  const tasks = summary?.task_completion_stats || {};
+  const focus = summary?.focus_mode_stats || {};
+  const mood = summary?.mood_journal_summary || {};
+  const apps = summary?.app_usage_summary || {};
+
+  const initials = useMemo(() => {
+    const name = user?.name || 'User';
+    return name.split(' ').map((n) => n[0]).slice(0, 2).join('').toUpperCase();
+  }, [user]);
 
   return (
-    <div className="flex flex-col gap-8">
-      {/* Top Section: User Info */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="rounded-2xl border border-slate-300 dark:border-slate-700 bg-surface p-6 shadow-lg flex flex-col md:flex-row gap-8 items-start"
-      >
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-24 h-24 rounded-full bg-primary flex items-center justify-center text-white text-3xl font-bold">
-            {currentUser.name.split(' ').map(n => n[0]).join('')}
+    <div className="flex flex-col gap-6">
+      <motion.section initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="rounded-2xl border border-slate-300 dark:border-slate-700 bg-surface p-6 shadow-sm">
+        <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+          <div className="flex items-center gap-4">
+            {user?.profile_picture ? (
+              <img src={user.profile_picture} alt="profile" className="h-16 w-16 rounded-full object-cover border border-slate-300 dark:border-slate-700" />
+            ) : (
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary text-xl font-bold text-white">{initials}</div>
+            )}
+            <div>
+              <h1 className="text-2xl font-bold text-slate-900 dark:text-white">{user?.name || 'User Profile'}</h1>
+              <div className="mt-1 flex flex-wrap gap-3 text-xs text-slate-600 dark:text-slate-400">
+                <span className="inline-flex items-center gap-1"><Mail size={14} /> {user?.email || '-'}</span>
+                <span className="inline-flex items-center gap-1"><CalendarDays size={14} /> Joined {user?.join_date || '-'}</span>
+              </div>
+            </div>
           </div>
-          <div className="text-center">
-            <h2 className="text-xl font-bold text-slate-900 dark:text-white">{currentUser.name}</h2>
-            <p className="text-muted text-sm">{currentUser.age} years old</p>
+          <div className="rounded-xl border border-primary/40 bg-primary/10 px-4 py-3">
+            <p className="text-xs text-slate-600 dark:text-slate-300">Weekly Productivity Score</p>
+            <p className="text-3xl font-extrabold text-primary">{product?.weekly_productivity_score ?? '--'}</p>
+          </div>
+        </div>
+      </motion.section>
+
+      <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <MetricCard label="Avg Daily Screen Time" value={`${product?.average_daily_screen_time_hours ?? 0}h`} />
+        <MetricCard label="Total Focus Hours" value={`${product?.total_focus_hours ?? 0}h`} />
+        <MetricCard label="Task Completion" value={`${tasks?.weekly_completion_percentage ?? 0}%`} hint="This week" />
+      </section>
+
+      <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <div className="rounded-2xl border border-slate-300 dark:border-slate-700 bg-surface p-5">
+          <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Streak Statistics</h3>
+          <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+            <MetricCard label="Current Streak" value={streak?.current_streak ?? 0} />
+            <MetricCard label="Longest Streak" value={streak?.longest_streak ?? 0} />
+            <MetricCard label="Successful Days" value={streak?.total_successful_days ?? 0} />
           </div>
         </div>
 
-        <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-6 w-full">
-          <div className="flex flex-col gap-2">
-            <label className="text-sm text-muted">Daily Goal (minutes)</label>
-            <input
-              type="number"
-              value={goal}
-              onChange={(e) => setGoal(e.target.value)}
-              className="bg-base border border-slate-300 dark:border-slate-700 rounded-lg px-4 py-2 text-slate-900 dark:text-white focus:outline-none focus:border-primary"
-            />
-          </div>
-          <div className="flex flex-col gap-2">
-            <label className="text-sm text-muted">Primary Platform</label>
-            <select
-              value={platform}
-              onChange={(e) => setPlatform(e.target.value)}
-              className="bg-base border border-slate-300 dark:border-slate-700 rounded-lg px-4 py-2 text-slate-900 dark:text-white focus:outline-none focus:border-primary"
-            >
-              <option value="Instagram">Instagram</option>
-              <option value="Facebook">Facebook</option>
-              <option value="YouTube">YouTube</option>
-            </select>
-          </div>
-          <div className="flex flex-col gap-2">
-            <label className="text-sm text-muted">Profession</label>
-            <select
-              value={profession}
-              onChange={(e) => setProfession(e.target.value)}
-              className="bg-base border border-slate-300 dark:border-slate-700 rounded-lg px-4 py-2 text-slate-900 dark:text-white focus:outline-none focus:border-primary"
-            >
-              <option value="Student">Student</option>
-              <option value="Software Engineer">Software Engineer</option>
-              <option value="Marketer Manager">Marketer Manager</option>
-            </select>
-          </div>
-          <div className="flex items-end">
-            <button
-              onClick={handleSave}
-              className="w-full px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg font-medium transition-colors"
-            >
-              Save Changes
-            </button>
+        <div className="rounded-2xl border border-slate-300 dark:border-slate-700 bg-surface p-5">
+          <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Task Completion Stats</h3>
+          <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+            <MetricCard label="Total Tasks Created" value={tasks?.total_tasks_created ?? 0} />
+            <MetricCard label="Completed This Week" value={tasks?.tasks_completed_this_week ?? 0} />
+            <MetricCard label="Completion %" value={`${tasks?.weekly_completion_percentage ?? 0}%`} />
           </div>
         </div>
-      </motion.div>
+      </section>
 
-      {/* Cluster / Persona Section */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
-        className="flex flex-col gap-4"
-      >
-        <h3 className="text-xl font-bold text-slate-900 dark:text-white">Your Digital Persona {loading ? '' : '(ML Predicted)'}</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-          {userPersonas.map((persona) => (
-            <PersonaCard
-              key={persona.id}
-              persona={persona}
-              isUser={persona.name === activePersona}
-            />
+      <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <div className="rounded-2xl border border-slate-300 dark:border-slate-700 bg-surface p-5">
+          <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Focus Mode Stats</h3>
+          <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+            <MetricCard label="Total Focus Sessions" value={focus?.total_focus_sessions ?? 0} />
+            <MetricCard label="Websites Blocked" value={focus?.websites_blocked ?? 0} />
+            <MetricCard label="Focus Hours This Week" value={`${focus?.focus_hours_this_week ?? 0}h`} />
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-slate-300 dark:border-slate-700 bg-surface p-5">
+          <h3 className="text-lg font-semibold text-slate-900 dark:text-white">App Usage Summary</h3>
+          <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+            <MetricCard label="Most Used App" value={apps?.most_used_app || '-'} />
+            <MetricCard label="Most Productive App" value={apps?.most_productive_app || '-'} />
+            <MetricCard label="Most Distracting App" value={apps?.most_distracting_app || '-'} />
+          </div>
+        </div>
+      </section>
+
+      <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <div className="rounded-2xl border border-slate-300 dark:border-slate-700 bg-surface p-5">
+          <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Mood Journal Summary</h3>
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            <MetricCard label="Total Entries" value={mood?.total_journal_entries ?? 0} />
+            <MetricCard label="Average Mood" value={mood?.average_mood_score ?? 0} />
+          </div>
+          <div className="mt-4 h-56">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={mood?.mood_trend_graph || []}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.2} />
+                <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                <YAxis domain={[0, 5]} tick={{ fontSize: 11 }} />
+                <Tooltip />
+                <Line type="monotone" dataKey="avg_mood" stroke="#10B981" strokeWidth={2} dot={{ r: 3 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-slate-300 dark:border-slate-700 bg-surface p-5">
+          <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Weekly Screen Time</h3>
+          <div className="mt-4 h-56">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={summary?.charts?.weekly_screen_time_graph || []}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.2} />
+                <XAxis dataKey="day" />
+                <YAxis />
+                <Tooltip />
+                <Bar dataKey="hours" radius={[8, 8, 0, 0]}>
+                  {(summary?.charts?.weekly_screen_time_graph || []).map((_, index) => (
+                    <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-slate-300 dark:border-slate-700 bg-surface p-5">
+        <h3 className="inline-flex items-center gap-2 text-lg font-semibold text-slate-900 dark:text-white">
+          <Award size={18} /> Achievements
+        </h3>
+        <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {(summary?.achievements || []).map((item) => (
+            <AchievementCard key={item.id} item={item} />
           ))}
         </div>
-      </motion.div>
+      </section>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Mental Health Breakdown */}
-        <MentalHealthCard scores={mentalScores} delay={0.2} />
-
-        {/* Productivity Section */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-          className="rounded-2xl border border-slate-300 dark:border-slate-700 bg-surface p-6 shadow-lg flex flex-col gap-6"
-        >
-          <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Productivity Profile {loading ? '' : '(ML Predicted)'}</h3>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="bg-base border border-slate-300 dark:border-slate-700 rounded-xl p-4">
-              <p className="text-muted text-sm">Study Hours/wk</p>
-              <p className="text-2xl font-bold text-slate-900 dark:text-white mt-1">{prodData.hoursStudied}</p>
-            </div>
-            <div className="bg-base border border-slate-300 dark:border-slate-700 rounded-xl p-4">
-              <p className="text-muted text-sm">Sleep Hours/night</p>
-              <p className="text-2xl font-bold text-slate-900 dark:text-white mt-1">{prodData.sleepHours}</p>
-            </div>
-            <div className="bg-base border border-slate-300 dark:border-slate-700 rounded-xl p-4">
-              <p className="text-muted text-sm">Motivation</p>
-              <div className="mt-2"><RiskBadge risk={prodData.motivationLevel} /></div>
-            </div>
-            <div className="bg-base border border-slate-300 dark:border-slate-700 rounded-xl p-4">
-              <p className="text-muted text-sm">Predicted Exam Score</p>
-              <p className="text-2xl font-bold text-slate-900 dark:text-white mt-1">{prodData.examScore}%</p>
-            </div>
-          </div>
-        </motion.div>
-      </div>
-
-      {/* Model Results Section */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.4 }}
-        className="rounded-2xl border border-slate-300 dark:border-slate-700 bg-surface p-6 shadow-lg flex flex-col gap-4"
-      >
-        <h3 className="text-lg font-semibold text-slate-900 dark:text-white">ML Model Metrics {loading ? '' : '(Live from Backend)'}</h3>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm text-muted">
-            <thead className="text-xs uppercase bg-base text-slate-900 dark:text-white">
-              <tr>
-                <th className="px-4 py-3 rounded-tl-lg">Model Task</th>
-                <th className="px-4 py-3">Algorithm</th>
-                <th className="px-4 py-3">Metrics</th>
-                <th className="px-4 py-3 rounded-tr-lg">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr className="border-b border-slate-300 dark:border-slate-700">
-                <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">{modelMetrics.classifier.model}</td>
-                <td className="px-4 py-3">{modelMetrics.classifier.name}</td>
-                <td className="px-4 py-3">Acc: {modelMetrics.classifier.accuracy} | F1: {modelMetrics.classifier.f1}</td>
-                <td className="px-4 py-3 text-success">Deployed</td>
-              </tr>
-              <tr className="border-b border-slate-300 dark:border-slate-700">
-                <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">{modelMetrics.mentalHealth.model}</td>
-                <td className="px-4 py-3">{modelMetrics.mentalHealth.name}</td>
-                <td className="px-4 py-3">Acc: {modelMetrics.mentalHealth.accuracy} | F1: {modelMetrics.mentalHealth.f1}</td>
-                <td className="px-4 py-3 text-success">Deployed</td>
-              </tr>
-              <tr className="border-b border-slate-300 dark:border-slate-700">
-                <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">{modelMetrics.regressor.model}</td>
-                <td className="px-4 py-3">{modelMetrics.regressor.name}</td>
-                <td className="px-4 py-3">R2: {modelMetrics.regressor.r2} | RMSE: {modelMetrics.regressor.rmse}</td>
-                <td className="px-4 py-3 text-success">Deployed</td>
-              </tr>
-              <tr>
-                <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">{modelMetrics.clustering.model}</td>
-                <td className="px-4 py-3">{modelMetrics.clustering.name}</td>
-                <td className="px-4 py-3">Silhouette: {modelMetrics.clustering.silhouette}</td>
-                <td className="px-4 py-3 text-success">Deployed</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </motion.div>
+      {loading ? <p className="text-sm text-slate-500">Loading profile summary...</p> : null}
     </div>
   );
 }

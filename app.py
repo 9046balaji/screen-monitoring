@@ -4,12 +4,14 @@ import joblib
 import json
 import numpy as np
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
+import time
 import requests
 from sklearn.ensemble import IsolationForest
 import os
 from pydantic import BaseModel, ValidationError
-from typing import Optional
+from typing import Any, Optional
+from collections import defaultdict
 
 from database.database import init_db, get_db_connection
 from database.migrations import apply_migrations
@@ -66,6 +68,612 @@ class InferenceService:
 inference_service = InferenceService()
 analytics_service = AnalyticsService()
 weekly_analytics_service = WeeklyAnalyticsService()
+
+DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+MOOD_JOURNAL_PATH = os.path.join(DATA_DIR, "mood_journal.json")
+FOCUS_SESSION_PATH = os.path.join(DATA_DIR, "focus_session.json")
+BLOCKED_SITES_PATH = os.path.join(DATA_DIR, "blocked_sites.json")
+
+PRODUCTIVE_CATEGORY_LABELS = {"development", "productivity", "office", "education", "work", "utility", "study"}
+DISTRACTING_CATEGORY_LABELS = {"entertainment", "social", "social media", "games", "video"}
+
+CHATBOT_CONTEXT_TTL_SECONDS = 20
+_chatbot_context_cache = {
+    'data': None,
+    'expires_at': 0.0,
+}
+
+
+def _load_json(path: str, fallback):
+    try:
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return fallback
+
+
+def _truncate_text(value: str, max_chars: int = 16000) -> str:
+    text = value or ""
+    if len(text) <= max_chars:
+        return text
+    return text[:max_chars] + "\n... [truncated]"
+
+
+def _safe_json_preview(value: Any, max_chars: int = 3500):
+    try:
+        dumped = json.dumps(value, ensure_ascii=True)
+    except Exception:
+        dumped = str(value)
+    return _truncate_text(dumped, max_chars=max_chars)
+
+
+def _get_sqlite_snapshot(conn, max_rows_per_table: int = 20):
+    c = conn.cursor()
+    c.execute(
+        """
+        SELECT name
+        FROM sqlite_master
+        WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+        ORDER BY name ASC
+        """
+    )
+    tables = [r['name'] for r in c.fetchall()]
+
+    snapshot = {}
+    for table in tables:
+        try:
+            c.execute(f'SELECT COUNT(*) AS cnt FROM "{table}"')
+            row_count = int(c.fetchone()['cnt'] or 0)
+
+            c.execute(f'SELECT * FROM "{table}" ORDER BY rowid DESC LIMIT ?', (max_rows_per_table,))
+            rows = [dict(r) for r in c.fetchall()]
+            rows.reverse()
+
+            snapshot[table] = {
+                'row_count': row_count,
+                'recent_rows': rows,
+            }
+        except Exception as ex:
+            snapshot[table] = {
+                'error': f'Failed reading table: {ex}',
+            }
+
+    return snapshot
+
+
+def _get_data_folder_snapshot(max_chars_per_json: int = 3500):
+    files = []
+    json_files = {}
+
+    if not os.path.isdir(DATA_DIR):
+        return {
+            'files': files,
+            'json_files': json_files,
+        }
+
+    for name in sorted(os.listdir(DATA_DIR)):
+        path = os.path.join(DATA_DIR, name)
+        if not os.path.isfile(path):
+            continue
+
+        info = {
+            'name': name,
+            'size_bytes': os.path.getsize(path),
+        }
+        files.append(info)
+
+        lower = name.lower()
+        if lower.endswith('.json'):
+            parsed = _load_json(path, None)
+            if parsed is None:
+                json_files[name] = {'error': 'Could not parse JSON'}
+            else:
+                data_type = type(parsed).__name__
+                item_count = len(parsed) if isinstance(parsed, (list, dict)) else 1
+                json_files[name] = {
+                    'type': data_type,
+                    'item_count': item_count,
+                    'content_preview': _safe_json_preview(parsed, max_chars=max_chars_per_json),
+                }
+
+    return {
+        'files': files,
+        'json_files': json_files,
+    }
+
+
+def _build_chatbot_data_context(force_refresh: bool = False):
+    now = time.monotonic()
+    cached_data = _chatbot_context_cache.get('data')
+    if (not force_refresh) and cached_data is not None and now < float(_chatbot_context_cache.get('expires_at') or 0.0):
+        return cached_data
+
+    weekly_payload = _build_report_payload(period_days=7)
+    monthly_payload = _build_report_payload(period_days=30)
+
+    conn = get_db_connection()
+    try:
+        db_snapshot = _get_sqlite_snapshot(conn, max_rows_per_table=20)
+    finally:
+        conn.close()
+
+    data_snapshot = _get_data_folder_snapshot(max_chars_per_json=3500)
+
+    context = {
+        'generated_at_utc': datetime.utcnow().isoformat(),
+        'report_summaries': {
+            'weekly': weekly_payload,
+            'monthly': monthly_payload,
+        },
+        'database_snapshot': db_snapshot,
+        'data_folder_snapshot': data_snapshot,
+    }
+
+    _chatbot_context_cache['data'] = context
+    _chatbot_context_cache['expires_at'] = now + CHATBOT_CONTEXT_TTL_SECONDS
+    return context
+
+
+def _date_range(start_date, end_date):
+    cur = start_date
+    while cur <= end_date:
+        yield cur
+        cur += timedelta(days=1)
+
+
+def _usage_rows_for_period(conn, start_date, end_date):
+    c = conn.cursor()
+    c.execute(
+        '''
+        SELECT date, app_name, SUM(duration_minutes) AS minutes
+        FROM app_usage_logs
+        WHERE user_id = ? AND date BETWEEN ? AND ?
+        GROUP BY date, app_name
+        ORDER BY date ASC
+        ''',
+        ('local', start_date.isoformat(), end_date.isoformat())
+    )
+    rows = c.fetchall()
+
+    category_map = weekly_analytics_service._load_category_map()
+    mapped_rows = []
+    for r in rows:
+        app = r['app_name']
+        category = weekly_analytics_service._classify(app, category_map)
+        mapped_rows.append({
+            'date': r['date'],
+            'app': weekly_analytics_service._norm_app_name(app),
+            'minutes': int(round(float(r['minutes'] or 0))),
+            'category': category,
+        })
+
+    # Fallback to usage_logs if app_usage_logs is empty for this window.
+    if mapped_rows:
+        return mapped_rows
+
+    c.execute(
+        '''
+        SELECT date, friendly_name, category, SUM(seconds) AS total_seconds
+        FROM usage_logs
+        WHERE date BETWEEN ? AND ?
+        GROUP BY date, friendly_name, category
+        ORDER BY date ASC
+        ''',
+        (start_date.isoformat(), end_date.isoformat())
+    )
+    rows = c.fetchall()
+    fallback_rows = []
+    for r in rows:
+        fallback_rows.append({
+            'date': r['date'],
+            'app': r['friendly_name'],
+            'minutes': int(round(float(r['total_seconds'] or 0) / 60.0)),
+            'category': (r['category'] or 'Other').title(),
+        })
+    return fallback_rows
+
+
+def _compute_task_completion(conn, start_date, end_date):
+    c = conn.cursor()
+    planned_total = 0
+    for d in _date_range(start_date, end_date):
+        c.execute(
+            'SELECT COUNT(*) AS cnt FROM weekly_tasks WHERE user_id = ? AND day_of_week = ?',
+            ('local', d.weekday())
+        )
+        planned_total += int(c.fetchone()['cnt'])
+
+    c.execute(
+        '''
+        SELECT COUNT(*) AS cnt
+        FROM daily_task_status
+        WHERE status = 'completed' AND date BETWEEN ? AND ?
+        ''',
+        (start_date.isoformat(), end_date.isoformat())
+    )
+    completed = int(c.fetchone()['cnt'])
+
+    rate = round((completed / planned_total) * 100, 1) if planned_total > 0 else 0.0
+    return {
+        'planned_total': planned_total,
+        'completed_total': completed,
+        'completion_rate': rate,
+    }
+
+
+def _compute_streak_over_rows(rows):
+    longest = 0
+    current = 0
+    for r in rows:
+        if r.get('success'):
+            current += 1
+            longest = max(longest, current)
+        else:
+            current = 0
+    return longest
+
+
+def _get_mood_period_summary(conn, start_date, end_date):
+    c = conn.cursor()
+    c.execute(
+        '''
+        SELECT SUBSTR(date, 1, 10) AS d, AVG(mood_score) AS avg_mood, COUNT(*) AS cnt
+        FROM mood_journal
+        WHERE SUBSTR(date, 1, 10) BETWEEN ? AND ?
+        GROUP BY SUBSTR(date, 1, 10)
+        ORDER BY d ASC
+        ''',
+        (start_date.isoformat(), end_date.isoformat())
+    )
+    rows = c.fetchall()
+    if rows:
+        trend = [{'date': r['d'], 'avg_mood': round(float(r['avg_mood']), 2), 'entries': int(r['cnt'])} for r in rows]
+        c.execute('SELECT COUNT(*) AS cnt, AVG(mood_score) AS avg_mood FROM mood_journal')
+        all_row = c.fetchone()
+        return {
+            'total_entries': int(all_row['cnt'] or 0),
+            'average_mood': round(float(all_row['avg_mood']), 2) if all_row['avg_mood'] is not None else 0.0,
+            'trend': trend,
+        }
+
+    file_rows = _load_json(MOOD_JOURNAL_PATH, [])
+    parsed = []
+    for item in file_rows:
+        try:
+            d = str(item.get('date', ''))[:10]
+            score = float(item.get('mood_score', 0) or 0)
+            if d:
+                parsed.append((d, score))
+        except Exception:
+            continue
+
+    by_day = defaultdict(list)
+    for d, score in parsed:
+        if start_date.isoformat() <= d <= end_date.isoformat():
+            by_day[d].append(score)
+
+    trend = []
+    for d in sorted(by_day.keys()):
+        vals = by_day[d]
+        trend.append({'date': d, 'avg_mood': round(sum(vals) / len(vals), 2), 'entries': len(vals)})
+
+    all_avg = round(sum(s for _, s in parsed) / len(parsed), 2) if parsed else 0.0
+    return {
+        'total_entries': len(parsed),
+        'average_mood': all_avg,
+        'trend': trend,
+    }
+
+
+def _focus_stats(conn, start_date, end_date):
+    c = conn.cursor()
+    c.execute(
+        '''
+        SELECT COUNT(*) AS cnt, COALESCE(SUM(duration_minutes), 0) AS total_min
+        FROM focus_sessions
+        WHERE DATE(start_ts) BETWEEN ? AND ?
+        ''',
+        (start_date.isoformat(), end_date.isoformat())
+    )
+    row = c.fetchone()
+    period_sessions = int(row['cnt'] or 0)
+    period_minutes = int(row['total_min'] or 0)
+
+    c.execute('SELECT COUNT(*) AS cnt, COALESCE(SUM(duration_minutes), 0) AS total_min FROM focus_sessions')
+    total_row = c.fetchone()
+    total_sessions = int(total_row['cnt'] or 0)
+    total_minutes = int(total_row['total_min'] or 0)
+
+    blocked_conf = _load_json(BLOCKED_SITES_PATH, {})
+    blocked_domains = set()
+    if isinstance(blocked_conf, dict):
+        for domains in blocked_conf.values():
+            if isinstance(domains, list):
+                blocked_domains.update(str(d).strip().lower() for d in domains if d)
+
+    session_data = _load_json(FOCUS_SESSION_PATH, {})
+    if isinstance(session_data, dict):
+        for d in session_data.get('blocked_domains', []):
+            blocked_domains.add(str(d).strip().lower())
+
+    return {
+        'period_sessions': period_sessions,
+        'period_minutes': period_minutes,
+        'period_hours': round(period_minutes / 60.0, 2),
+        'total_sessions': total_sessions,
+        'total_hours': round(total_minutes / 60.0, 2),
+        'websites_blocked': len(blocked_domains),
+    }
+
+
+def _app_usage_stats(usage_rows):
+    app_totals = defaultdict(int)
+    cat_totals = defaultdict(int)
+    productive_apps = defaultdict(int)
+    distracting_apps = defaultdict(int)
+
+    for r in usage_rows:
+        app = r['app']
+        mins = int(r['minutes'] or 0)
+        cat = (r.get('category') or 'Other').title()
+        norm_cat = cat.lower()
+
+        app_totals[app] += mins
+        cat_totals[cat] += mins
+
+        if norm_cat in PRODUCTIVE_CATEGORY_LABELS:
+            productive_apps[app] += mins
+        if norm_cat in DISTRACTING_CATEGORY_LABELS:
+            distracting_apps[app] += mins
+
+    total_minutes = sum(app_totals.values())
+    entertainment_minutes = sum(v for k, v in cat_totals.items() if k.lower() in DISTRACTING_CATEGORY_LABELS)
+    entertainment_pct = round((entertainment_minutes / total_minutes) * 100, 1) if total_minutes else 0.0
+
+    top_apps = sorted(app_totals.items(), key=lambda x: x[1], reverse=True)
+    top_categories = sorted(cat_totals.items(), key=lambda x: x[1], reverse=True)
+
+    return {
+        'total_minutes': total_minutes,
+        'total_hours': round(total_minutes / 60.0, 2),
+        'entertainment_pct': entertainment_pct,
+        'most_used_app': top_apps[0][0] if top_apps else 'N/A',
+        'most_productive_app': sorted(productive_apps.items(), key=lambda x: x[1], reverse=True)[0][0] if productive_apps else 'N/A',
+        'most_distracting_app': sorted(distracting_apps.items(), key=lambda x: x[1], reverse=True)[0][0] if distracting_apps else 'N/A',
+        'top_apps': [
+            {'app': app, 'minutes': mins, 'hours': round(mins / 60.0, 2)}
+            for app, mins in top_apps[:7]
+        ],
+        'category_breakdown': [
+            {
+                'category': cat,
+                'minutes': mins,
+                'hours': round(mins / 60.0, 2),
+                'percentage': round((mins / total_minutes) * 100, 2) if total_minutes else 0.0,
+            }
+            for cat, mins in top_categories
+        ],
+    }
+
+
+def _productivity_score_v2(focus_hours, task_completion_rate, entertainment_pct, average_mood):
+    focus_component = max(0.0, min(100.0, (focus_hours / 10.0) * 100.0))
+    task_component = max(0.0, min(100.0, float(task_completion_rate or 0.0)))
+    low_entertainment_usage = max(0.0, min(100.0, 100.0 - float(entertainment_pct or 0.0)))
+    mood_component = max(0.0, min(100.0, float(average_mood or 0.0) * 20.0))
+
+    score = (
+        focus_component * 0.4
+        + task_component * 0.3
+        + low_entertainment_usage * 0.2
+        + mood_component * 0.1
+    )
+
+    return {
+        'score': round(max(0.0, min(100.0, score)), 1),
+        'components': {
+            'focus_hours': round(float(focus_hours or 0.0), 2),
+            'focus_component': round(focus_component, 1),
+            'task_completion_rate': round(task_component, 1),
+            'low_entertainment_usage': round(low_entertainment_usage, 1),
+            'mood_score_component': round(mood_component, 1),
+        }
+    }
+
+
+def _day_screen_series(usage_rows, start_date, end_date):
+    day_totals = defaultdict(int)
+    for r in usage_rows:
+        day_totals[r['date']] += int(r['minutes'] or 0)
+    return [
+        {
+            'date': d.isoformat(),
+            'day': d.strftime('%a'),
+            'minutes': int(day_totals.get(d.isoformat(), 0)),
+            'hours': round(day_totals.get(d.isoformat(), 0) / 60.0, 2),
+        }
+        for d in _date_range(start_date, end_date)
+    ]
+
+
+def _task_day_series(conn, start_date, end_date):
+    c = conn.cursor()
+    rows = []
+    for d in _date_range(start_date, end_date):
+        date_str = d.isoformat()
+        dow = d.weekday()
+        c.execute('SELECT COUNT(*) AS cnt FROM weekly_tasks WHERE user_id = ? AND day_of_week = ?', ('local', dow))
+        planned = int(c.fetchone()['cnt'])
+
+        c.execute(
+            '''
+            SELECT COUNT(*) AS cnt
+            FROM daily_task_status dts
+            JOIN weekly_tasks wt ON wt.id = dts.task_id
+            WHERE wt.user_id = ? AND wt.day_of_week = ? AND dts.date = ? AND dts.status = 'completed'
+            ''',
+            ('local', dow, date_str)
+        )
+        completed = int(c.fetchone()['cnt'])
+
+        rows.append({
+            'date': date_str,
+            'day': d.strftime('%a'),
+            'planned': planned,
+            'completed': completed,
+            'completion_rate': round((completed / planned) * 100, 1) if planned > 0 else 0.0,
+        })
+    return rows
+
+
+def _best_task_window(conn, start_date, end_date):
+    c = conn.cursor()
+    c.execute(
+        '''
+        SELECT SUBSTR(wt.start_time, 1, 2) AS hour_block, COUNT(*) AS completed_count
+        FROM daily_task_status dts
+        JOIN weekly_tasks wt ON wt.id = dts.task_id
+        WHERE dts.status = 'completed' AND dts.date BETWEEN ? AND ?
+        GROUP BY hour_block
+        ORDER BY completed_count DESC
+        LIMIT 1
+        ''',
+        (start_date.isoformat(), end_date.isoformat())
+    )
+    row = c.fetchone()
+    if not row or not row['hour_block']:
+        return None
+    h = int(row['hour_block'])
+    return f"{h:02d}:00-{(h + 3) % 24:02d}:00"
+
+
+def _generate_ai_insights(screen_series, app_stats, task_window, task_stats, mood_summary, productivity_score):
+    insights = []
+    insights.append(
+        f"You spent {app_stats['entertainment_pct']}% of your screen time on entertainment/social apps this period."
+    )
+
+    if task_window:
+        insights.append(f"You complete most tasks between {task_window}.")
+
+    low_days = [d for d in screen_series if d['hours'] < 4.0]
+    high_days = [d for d in screen_series if d['hours'] >= 4.0]
+    if low_days and high_days:
+        low_avg = sum(d['hours'] for d in low_days) / len(low_days)
+        high_avg = sum(d['hours'] for d in high_days) / len(high_days)
+        if low_avg < high_avg:
+            insights.append("Your productivity increases when daily screen time is below 4 hours.")
+
+    if float(mood_summary.get('average_mood', 0) or 0) < 3.0:
+        insights.append("Mood scores dipped below neutral. Add shorter focus blocks and a recovery break in the evening.")
+
+    insights.append(
+        f"Current productivity score is {productivity_score['score']}/100 with task completion at {task_stats['completion_rate']}%."
+    )
+    return insights
+
+
+def _build_report_payload(period_days=7):
+    end_date = datetime.utcnow().date()
+    start_date = end_date - timedelta(days=period_days - 1)
+    conn = get_db_connection()
+    try:
+        usage_rows = _usage_rows_for_period(conn, start_date, end_date)
+        app_stats = _app_usage_stats(usage_rows)
+        task_stats = _compute_task_completion(conn, start_date, end_date)
+        focus_stats = _focus_stats(conn, start_date, end_date)
+        mood_summary = _get_mood_period_summary(conn, start_date, end_date)
+        screen_series = _day_screen_series(usage_rows, start_date, end_date)
+        task_series = _task_day_series(conn, start_date, end_date)
+        task_window = _best_task_window(conn, start_date, end_date)
+        heatmap = analytics_service.get_heatmap(user_id='local', days=min(period_days, 31))
+
+        c = conn.cursor()
+        c.execute(
+            'SELECT COUNT(*) AS cnt FROM therapy_sessions WHERE DATE(started_at) BETWEEN ? AND ?',
+            (start_date.isoformat(), end_date.isoformat())
+        )
+        therapy_sessions = int(c.fetchone()['cnt'] or 0)
+
+        c.execute(
+            'SELECT COUNT(*) AS cnt FROM therapy_sessions'
+        )
+        therapy_total = int(c.fetchone()['cnt'] or 0)
+
+        productivity = _productivity_score_v2(
+            focus_hours=focus_stats['period_hours'],
+            task_completion_rate=task_stats['completion_rate'],
+            entertainment_pct=app_stats['entertainment_pct'],
+            average_mood=mood_summary['average_mood'],
+        )
+
+        insights = _generate_ai_insights(
+            screen_series=screen_series,
+            app_stats=app_stats,
+            task_window=task_window,
+            task_stats=task_stats,
+            mood_summary=mood_summary,
+            productivity_score=productivity,
+        )
+
+        return {
+            'period': {
+                'start_date': start_date.isoformat(),
+                'end_date': end_date.isoformat(),
+                'days': period_days,
+            },
+            'totals': {
+                'screen_time_minutes': app_stats['total_minutes'],
+                'screen_time_hours': app_stats['total_hours'],
+                'focus_hours': focus_stats['period_hours'],
+                'focus_sessions': focus_stats['period_sessions'],
+                'task_completion_rate': task_stats['completion_rate'],
+                'therapy_sessions': therapy_sessions,
+            },
+            'usage': {
+                'most_used_apps': app_stats['top_apps'][:5],
+                'category_breakdown': app_stats['category_breakdown'],
+                'most_used_app': app_stats['most_used_app'],
+                'most_productive_app': app_stats['most_productive_app'],
+                'most_distracting_app': app_stats['most_distracting_app'],
+            },
+            'mood': {
+                'summary': {
+                    'total_entries': mood_summary['total_entries'],
+                    'average_mood_score': mood_summary['average_mood'],
+                },
+                'trend': mood_summary['trend'],
+            },
+            'planner': {
+                'tasks_completed': task_stats['completed_total'],
+                'tasks_planned': task_stats['planned_total'],
+                'daily_completion': task_series,
+                'best_task_window': task_window,
+            },
+            'focus_mode': {
+                'total_focus_sessions': focus_stats['total_sessions'],
+                'focus_hours_this_period': focus_stats['period_hours'],
+                'focus_hours_total': focus_stats['total_hours'],
+                'websites_blocked': focus_stats['websites_blocked'],
+            },
+            'cbt_activity': {
+                'sessions_this_period': therapy_sessions,
+                'sessions_total': therapy_total,
+            },
+            'productivity_score': productivity,
+            'ai_insights': insights,
+            'charts': {
+                'screen_time_series': screen_series,
+                'app_usage_pie': app_stats['category_breakdown'],
+                'productivity_heatmap': heatmap,
+                'task_completion_series': task_series,
+                'mood_trend': mood_summary['trend'],
+            }
+        }
+    finally:
+        conn.close()
 
 # ═══════════════════════════════════
 # Pydantic Schemas
@@ -803,7 +1411,7 @@ try:
     from enforcer import save_limits, load_limits
     from focus_mode import start_focus_session, stop_focus_session, get_focus_status
     from pomodoro import start_pomodoro, stop_pomodoro, get_pomodoro_state
-    from reporter import generate_daily_report, generate_weekly_report
+    from reporter import generate_daily_report, generate_weekly_report, generate_structured_report_pdf
 except ImportError as e:
     print(f"Warning: Could not import agent modules: {e}")
 from flask import send_file
@@ -1058,64 +1666,255 @@ def daily_report():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
+@app.route('/api/profile/summary', methods=['GET'])
+def profile_summary():
+    try:
+        end_date = datetime.utcnow().date()
+        start_date = end_date - timedelta(days=6)
+
+        conn = get_db_connection()
+        c = conn.cursor()
+
+        usage_rows = _usage_rows_for_period(conn, start_date, end_date)
+        app_stats = _app_usage_stats(usage_rows)
+        task_stats = _compute_task_completion(conn, start_date, end_date)
+        focus_stats = _focus_stats(conn, start_date, end_date)
+        mood_summary = _get_mood_period_summary(conn, start_date, end_date)
+        screen_series = _day_screen_series(usage_rows, start_date, end_date)
+        task_series = _task_day_series(conn, start_date, end_date)
+
+        streak_window = _compute_streak(conn, end_date, 90)
+        longest_streak = _compute_streak_over_rows(streak_window.get('days', []))
+
+        c.execute('SELECT COUNT(*) AS cnt FROM weekly_tasks WHERE user_id = ?', ('local',))
+        total_tasks_created = int(c.fetchone()['cnt'] or 0)
+
+        c.execute('SELECT COUNT(*) AS cnt FROM therapy_sessions')
+        cbt_total = int(c.fetchone()['cnt'] or 0)
+
+        c.execute(
+            '''
+            SELECT MIN(dt) AS first_day
+            FROM (
+                SELECT MIN(date) AS dt FROM app_usage_logs
+                UNION ALL
+                SELECT MIN(SUBSTR(date, 1, 10)) AS dt FROM mood_journal
+                UNION ALL
+                SELECT MIN(SUBSTR(created_at, 1, 10)) AS dt FROM weekly_tasks
+            )
+            WHERE dt IS NOT NULL
+            '''
+        )
+        join_row = c.fetchone()
+        join_date = join_row['first_day'] if join_row and join_row['first_day'] else end_date.isoformat()
+
+        conn.close()
+
+        productivity = _productivity_score_v2(
+            focus_hours=focus_stats['period_hours'],
+            task_completion_rate=task_stats['completion_rate'],
+            entertainment_pct=app_stats['entertainment_pct'],
+            average_mood=mood_summary['average_mood'],
+        )
+
+        achievements = [
+            {
+                'id': 'digital_detox_starter',
+                'title': 'Digital Detox Starter',
+                'description': 'Complete 5 focus sessions',
+                'target': 5,
+                'progress': focus_stats['total_sessions'],
+                'unlocked': focus_stats['total_sessions'] >= 5,
+            },
+            {
+                'id': 'consistency_master',
+                'title': 'Consistency Master',
+                'description': 'Reach a 7-day streak',
+                'target': 7,
+                'progress': streak_window.get('current_streak', 0),
+                'unlocked': streak_window.get('current_streak', 0) >= 7,
+            },
+            {
+                'id': 'deep_work_champion',
+                'title': 'Deep Work Champion',
+                'description': 'Log 10 focus hours',
+                'target': 10,
+                'progress': focus_stats['total_hours'],
+                'unlocked': focus_stats['total_hours'] >= 10,
+            },
+            {
+                'id': 'balanced_mind',
+                'title': 'Balanced Mind',
+                'description': 'Write 5 mood journal entries',
+                'target': 5,
+                'progress': mood_summary['total_entries'],
+                'unlocked': mood_summary['total_entries'] >= 5,
+            },
+        ]
+
+        return jsonify({
+            'user_info': {
+                'name': request.args.get('name', 'Arjun Reddy'),
+                'email': request.args.get('email', 'arjun.reddy@digiwell.app'),
+                'join_date': join_date,
+                'profile_picture': request.args.get('profile_picture', 'https://ui-avatars.com/api/?name=Arjun+Reddy&background=0F172A&color=ffffff'),
+            },
+            'productivity_summary': {
+                'average_daily_screen_time_hours': round(app_stats['total_hours'] / 7.0, 2),
+                'weekly_productivity_score': productivity['score'],
+                'total_focus_hours': focus_stats['total_hours'],
+            },
+            'streak_statistics': {
+                'current_streak': streak_window.get('current_streak', 0),
+                'longest_streak': longest_streak,
+                'total_successful_days': streak_window.get('monthly_success_days', 0),
+            },
+            'task_completion_stats': {
+                'total_tasks_created': total_tasks_created,
+                'tasks_completed_this_week': task_stats['completed_total'],
+                'weekly_completion_percentage': task_stats['completion_rate'],
+            },
+            'focus_mode_stats': {
+                'total_focus_sessions': focus_stats['total_sessions'],
+                'websites_blocked': focus_stats['websites_blocked'],
+                'focus_hours_this_week': focus_stats['period_hours'],
+            },
+            'mood_journal_summary': {
+                'total_journal_entries': mood_summary['total_entries'],
+                'average_mood_score': mood_summary['average_mood'],
+                'mood_trend_graph': mood_summary['trend'],
+            },
+            'app_usage_summary': {
+                'most_used_app': app_stats['most_used_app'],
+                'most_productive_app': app_stats['most_productive_app'],
+                'most_distracting_app': app_stats['most_distracting_app'],
+            },
+            'achievements': achievements,
+            'cbt_activity': {
+                'total_sessions': cbt_total,
+            },
+            'charts': {
+                'weekly_screen_time_graph': screen_series,
+                'task_completion_graph': task_series,
+                'mood_trend_line_chart': mood_summary['trend'],
+            },
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/reports/weekly', methods=['GET'])
 def weekly_report():
     try:
-        result = generate_weekly_report()
-        if 'error' in result:
-            return jsonify(result), 400
-        return send_file(result['filepath'], as_attachment=True,
-                         download_name=result['filename'], mimetype='application/pdf')
+        fmt = (request.args.get('format') or 'json').strip().lower()
+        if fmt == 'pdf':
+            payload = _build_report_payload(period_days=7)
+            payload['report_type'] = 'weekly'
+            result = generate_structured_report_pdf(payload, period='weekly')
+            if 'error' in result:
+                return jsonify(result), 400
+            return send_file(result['filepath'], as_attachment=True,
+                             download_name=result['filename'], mimetype='application/pdf')
+
+        payload = _build_report_payload(period_days=7)
+        payload['report_type'] = 'weekly'
+        if request.args.get('download') == '1':
+            filename = f"digiwell_weekly_report_{datetime.utcnow().strftime('%Y%m%d')}.json"
+            response = app.response_class(
+                response=json.dumps(payload, indent=2),
+                mimetype='application/json'
+            )
+            response.headers['Content-Disposition'] = f'attachment; filename={filename}'
+            return response
+        return jsonify(payload)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/reports/monthly', methods=['GET'])
+def monthly_report():
+    try:
+        fmt = (request.args.get('format') or 'json').strip().lower()
+        payload = _build_report_payload(period_days=30)
+        payload['report_type'] = 'monthly'
+        conn = get_db_connection()
+        streak_data = _compute_streak(conn, datetime.utcnow().date(), 90)
+        conn.close()
+        payload['monthly_summary'] = {
+            'total_productivity_hours': payload['totals']['focus_hours'],
+            'average_daily_screen_time_hours': round(payload['totals']['screen_time_hours'] / 30.0, 2),
+            'longest_streak': _compute_streak_over_rows(streak_data.get('days', [])),
+            'app_usage_trends': payload['charts']['screen_time_series'],
+        }
+
+        if fmt == 'pdf':
+            result = generate_structured_report_pdf(payload, period='monthly')
+            if 'error' in result:
+                return jsonify(result), 400
+            return send_file(result['filepath'], as_attachment=True,
+                             download_name=result['filename'], mimetype='application/pdf')
+
+        if request.args.get('download') == '1':
+            filename = f"digiwell_monthly_report_{datetime.utcnow().strftime('%Y%m%d')}.json"
+            response = app.response_class(
+                response=json.dumps(payload, indent=2),
+                mimetype='application/json'
+            )
+            response.headers['Content-Disposition'] = f'attachment; filename={filename}'
+            return response
+
+        return jsonify(payload)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/reports/productivity-score', methods=['GET'])
+def reports_productivity_score():
+    try:
+        period = (request.args.get('period') or 'weekly').strip().lower()
+        days = 30 if period == 'monthly' else 7
+        payload = _build_report_payload(period_days=days)
+        return jsonify({
+            'period': period,
+            'formula': '( focus_hours * 0.4 ) + ( task_completion_rate * 0.3 ) + ( low_entertainment_usage * 0.2 ) + ( mood_score * 0.1 )',
+            'score': payload['productivity_score']['score'],
+            'components': payload['productivity_score']['components'],
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 # ── Ollama AI Chatbot ─────────────────────────────────
 
 @app.route('/api/chat', methods=['POST'])
 def digiwell_chat():
     try:
-        data = request.get_json()
-        user_message = data.get('message', '')
-        
-        # Gather context from sqlite db
-        today = str(date.today())
-        conn = get_db_connection()
-        c = conn.cursor()
-        
-        c.execute('SELECT * FROM usage_logs WHERE date = ? ORDER BY seconds DESC', (today,))
-        rows = c.fetchall()
-        conn.close()
-        
-        total_seconds = sum(row['seconds'] for row in rows)
-        total_hours = total_seconds / 3600.0
-        app_count = len(rows)
-        
-        app_breakdown = "No data available."
-        
-        if rows:
-            breakdown_lines = []
-            for row in rows:
-                app_hrs = row['seconds'] / 3600.0
-                category = row['category'] or 'Unknown'
-                breakdown_lines.append(f"- {row['friendly_name']}: {app_hrs:.2f} hrs (Category: {category})")
-            app_breakdown = "\n".join(breakdown_lines)
-                
-        system_prompt = f"""
-You are DigiWell, a digital wellness coach. Here is the user's real usage data for today:
-Total screen time today: {total_hours:.2f} hrs across {app_count} apps.
+        data = request.get_json(silent=True) or {}
+        user_message = str(data.get('message', '')).strip()
+        if not user_message:
+            return jsonify({"error": "Missing 'message' in request body"}), 400
 
-App Breakdown:
-{app_breakdown}
+        force_refresh = bool(data.get('refresh_context', False))
+        chat_context = _build_chatbot_data_context(force_refresh=force_refresh)
+        context_json = _truncate_text(json.dumps(chat_context, ensure_ascii=True, indent=2), max_chars=16000)
+
+        system_prompt = f"""
+You are DigiWell, a digital wellness coach and planning assistant.
+
+You have access to ALL available internal data in the JSON block below (database tables, analytics, mood, focus, tasks, usage, and data folder files).
+Use this as the source of truth.
+
+INTERNAL_DATA_CONTEXT_JSON:
+{context_json}
 
 Guidelines:
-1. Answer the user's questions specifically and tangibly based ONLY on the data above.
-2. Be concise, warm, and specific. Max 3 sentences per response. 
-3. Do NOT tell the user to reduce time on productive tools (like Development or VS Code). Encourage them instead.
-4. Focus mini-goals on actual high-risk or time-wasting apps if any exist. Do not preach.
+1. Ground every answer in the provided data context. If something is missing in context, say that clearly.
+2. Be concise, warm, and specific. Max 4 sentences unless the user asks for deeper detail.
+3. Do NOT recommend cutting productive tooling usage (development, study, work apps) unless the user explicitly asks.
+4. Prioritize concrete action steps tied to the user's real usage patterns, focus sessions, mood trends, and task completion data.
 """
-        
-        # Call local Ollama
-        full_prompt = f"{system_prompt}\n\nUser: {user_message}\nDigiWell Planner:"
+
+        full_prompt = f"{system_prompt}\n\nUser: {user_message}\nDigiWell:".strip()
         
         try:
             ollama_response = requests.post(
@@ -1131,7 +1930,14 @@ Guidelines:
             reply = ollama_response.json().get("response", "I couldn't generate a response.")
         except requests.exceptions.RequestException as req_err:
             print(f"Ollama connection error: {req_err}")
-            reply = f"I'm having trouble connecting to my local AI brain (Ollama). Please ensure it's running locally on port 11434.\n\nSimulated response based on your {total_hours:.2f} hours of usage today: Consider taking a 15-minute screen-free break."
+            totals = chat_context.get('report_summaries', {}).get('weekly', {}).get('totals', {})
+            weekly_hours = float(totals.get('screen_time_hours') or 0.0)
+            reply = (
+                "I'm having trouble connecting to my local AI brain (Ollama). "
+                "Please ensure it's running locally on port 11434.\n\n"
+                f"Fallback insight from your full data context: this week shows about {weekly_hours:.2f} hours of screen time. "
+                "Try one focused 25-minute block right now and avoid your top distracting app during that block."
+            )
 
         return jsonify({"response": reply, "timestamp": datetime.utcnow().isoformat()})
     except Exception as e:
@@ -1962,11 +2768,13 @@ def create_slot(t_id):
         c = conn.cursor()
         c.execute('''
             INSERT INTO weekly_timetable_slots 
-            (id, timetable_id, day_of_week, start_time, end_time, title, description, category, focus_mode)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (id, timetable_id, day_of_week, start_time, end_time, title, description, category, focus_mode, completed, completed_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             s_id, t_id, data.get('day_of_week'), data.get('start_time'), data.get('end_time'),
-            data.get('title'), data.get('description', ''), data.get('category'), bool(data.get('focus_mode', False))
+            data.get('title'), data.get('description', ''), data.get('category'), bool(data.get('focus_mode', False)),
+            bool(data.get('completed', False)),
+            datetime.utcnow().isoformat() if bool(data.get('completed', False)) else None
         ))
         conn.commit()
         conn.close()
@@ -1986,15 +2794,21 @@ def modify_slot(s_id):
             return jsonify(status="deleted")
         else:
             data = request.json
+            completed = bool(data.get('completed', False))
+            completed_at = data.get('completed_at')
+            if completed and not completed_at:
+                completed_at = datetime.utcnow().isoformat()
+            if not completed:
+                completed_at = None
             c.execute('''
                 UPDATE weekly_timetable_slots SET 
                 day_of_week = ?, start_time = ?, end_time = ?, title = ?, 
-                description = ?, category = ?, focus_mode = ? 
+                description = ?, category = ?, focus_mode = ?, completed = ?, completed_at = ?
                 WHERE id = ?
             ''', (
                 data.get('day_of_week'), data.get('start_time'), data.get('end_time'),
                 data.get('title'), data.get('description', ''), data.get('category'), 
-                bool(data.get('focus_mode', False)), s_id
+                bool(data.get('focus_mode', False)), completed, completed_at, s_id
             ))
             conn.commit()
             conn.close()

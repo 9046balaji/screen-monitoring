@@ -233,6 +233,13 @@ MIGRATIONS = [
         CREATE INDEX IF NOT EXISTS idx_hourly_activity_user_date
             ON hourly_activity_table(user_id, date);
         """
+    },
+    {
+        "name": "migrate_011_add_timetable_slot_completion_fields",
+        "sql": """
+        ALTER TABLE weekly_timetable_slots ADD COLUMN completed BOOLEAN DEFAULT 0;
+        ALTER TABLE weekly_timetable_slots ADD COLUMN completed_at DATETIME;
+        """
     }
 ]
 

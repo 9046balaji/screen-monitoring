@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getTimetables, createTimetable, createTimetableSlot, generateDailyTasks } from '../api/digiwell';
+import { getTimetables, createTimetable, createTimetableSlot, updateTimetableSlot, generateDailyTasks } from '../api/digiwell';
 import { Plus, Play, Calendar } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
@@ -8,7 +8,7 @@ export default function WeeklyTimetable() {
   const [timetables, setTimetables] = useState([]);
   const [activeTable, setActiveTable] = useState(null);
   const [showAddSlot, setShowAddSlot] = useState(false);
-  const [newSlot, setNewSlot] = useState({ day_of_week: 0, start_time: '09:00', end_time: '10:00', title: '', category: 'deep_work', focus_mode: false });
+  const [newSlot, setNewSlot] = useState({ day_of_week: 0, start_time: '09:00', end_time: '10:00', title: '', category: 'deep_work', focus_mode: false, completed: false });
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -31,6 +31,40 @@ export default function WeeklyTimetable() {
   };
 
   const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+  const getDaySlots = (dayOfWeek) => {
+    return (activeTable?.slots || []).filter((s) => s.day_of_week === dayOfWeek);
+  };
+
+  const isDayCompleted = (dayOfWeek) => {
+    const daySlots = getDaySlots(dayOfWeek);
+    return daySlots.length > 0 && daySlots.every((s) => !!s.completed);
+  };
+
+  const handleSetDayCompleted = async (dayOfWeek, completed) => {
+    if (!activeTable) return;
+    const daySlots = getDaySlots(dayOfWeek);
+    if (daySlots.length === 0) {
+      toast('No slots found for this day');
+      return;
+    }
+
+    try {
+      await Promise.all(
+        daySlots.map((slot) =>
+          updateTimetableSlot(slot.id, {
+            ...slot,
+            completed,
+            completed_at: completed ? new Date().toISOString() : null,
+          })
+        )
+      );
+      await load();
+      toast.success(`${dayNames[dayOfWeek]} marked as ${completed ? 'completed' : 'not completed'}`);
+    } catch (e) {
+      toast.error('Failed to update day completion');
+    }
+  };
 
   const handleAddSlot = async () => {
     if (!activeTable) return;
@@ -87,12 +121,30 @@ export default function WeeklyTimetable() {
           <div className="grid grid-cols-7 gap-4 w-full">
             {dayNames.map((d, i) => (
               <div key={d} className="flex flex-col gap-2">
-                <div className="font-semibold text-center border-b pb-2 mb-2 dark:border-slate-700">{d}</div>
+                <div className="border-b pb-2 mb-2 dark:border-slate-700">
+                  <div className="font-semibold text-center">{d}</div>
+                  <button
+                    onClick={() => handleSetDayCompleted(i, !isDayCompleted(i))}
+                    className={`mt-2 w-full rounded px-2 py-1 text-[11px] font-medium transition-colors ${
+                      isDayCompleted(i)
+                        ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
+                    }`}
+                  >
+                    {isDayCompleted(i) ? 'Completed Day' : 'Mark Day Complete'}
+                  </button>
+                  {isDayCompleted(i) && (
+                    <p className="mt-2 text-[11px] rounded border border-emerald-200 bg-emerald-50 text-emerald-700 px-2 py-1 text-center dark:border-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300">
+                      Day Completed
+                    </p>
+                  )}
+                </div>
                 {activeTable.slots?.filter(s => s.day_of_week === i).map(s => (
-                  <div key={s.id} className="p-2 text-xs rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex flex-col gap-1 shadow-sm">
+                  <div key={s.id} className={`p-2 text-xs rounded-md border flex flex-col gap-1 shadow-sm ${s.completed ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-700' : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}>
                     <span className="font-bold text-indigo-600 dark:text-indigo-400">{s.start_time} - {s.end_time}</span>
                     <span className="font-medium text-slate-800 dark:text-slate-200">{s.title || 'Untitled task'}</span>
                     <span className="text-[10px] text-slate-500 uppercase">{s.category}</span>
+                    {!!s.completed && <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">Completed</span>}
                     {!!s.focus_mode && <span className="text-[10px] text-emerald-500 mt-1 font-semibold flex items-center gap-1">🎯 Auto Focus</span>}
                   </div>
                 ))}

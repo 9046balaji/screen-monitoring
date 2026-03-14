@@ -219,3 +219,193 @@ def _generate_report(period='daily'):
 
     doc.build(story)
     return {"status": "success", "filepath": filepath, "filename": filename}
+
+
+def generate_structured_report_pdf(report_payload, period='weekly'):
+    """Render a report payload from /api/reports/{period} as a downloadable PDF."""
+    if not isinstance(report_payload, dict):
+        return {"error": "Invalid report payload"}
+
+    os.makedirs(REPORTS_DIR, exist_ok=True)
+    ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f"DigiWell_{period.capitalize()}_Analytics_{ts}.pdf"
+    filepath = os.path.join(REPORTS_DIR, filename)
+
+    doc = SimpleDocTemplate(
+        filepath,
+        pagesize=A4,
+        rightMargin=0.75 * inch,
+        leftMargin=0.75 * inch,
+        topMargin=0.75 * inch,
+        bottomMargin=0.75 * inch,
+    )
+    styles = getSampleStyleSheet()
+    story = []
+
+    title_style = ParagraphStyle(
+        'Title2',
+        parent=styles['Title'],
+        fontSize=24,
+        textColor=PRIMARY,
+        spaceAfter=6,
+        fontName='Helvetica-Bold',
+    )
+    sub_style = ParagraphStyle(
+        'Sub2',
+        parent=styles['Normal'],
+        fontSize=11,
+        textColor=MUTED,
+        spaceAfter=14,
+    )
+    h2_style = ParagraphStyle(
+        'H2_2',
+        parent=styles['Heading2'],
+        fontSize=14,
+        textColor=TEXT,
+        fontName='Helvetica-Bold',
+        spaceAfter=8,
+    )
+    body_style = ParagraphStyle(
+        'Body2',
+        parent=styles['Normal'],
+        fontSize=10.5,
+        textColor=TEXT,
+        leading=14,
+    )
+
+    totals = report_payload.get('totals', {})
+    usage = report_payload.get('usage', {})
+    mood = report_payload.get('mood', {})
+    planner = report_payload.get('planner', {})
+    focus_mode = report_payload.get('focus_mode', {})
+    productivity = report_payload.get('productivity_score', {})
+    insights = report_payload.get('ai_insights', [])
+    period_data = report_payload.get('period', {})
+
+    story.append(Paragraph('DigiWell', title_style))
+    story.append(
+        Paragraph(
+            f"{period.capitalize()} Behavioral Report ({period_data.get('start_date', '-') } to {period_data.get('end_date', '-')})",
+            sub_style,
+        )
+    )
+    story.append(HRFlowable(width='100%', thickness=1, color=PRIMARY))
+    story.append(Spacer(1, 14))
+
+    story.append(Paragraph('Executive Summary', h2_style))
+    summary_table = Table(
+        [
+            ['Metric', 'Value'],
+            ['Total Screen Time', f"{totals.get('screen_time_hours', 0)} hours"],
+            ['Task Completion Rate', f"{totals.get('task_completion_rate', 0)}%"],
+            ['Focus Hours', f"{totals.get('focus_hours', 0)} hours"],
+            ['Productivity Score', f"{productivity.get('score', 0)}/100"],
+            ['Mood Average', str(mood.get('summary', {}).get('average_mood_score', 0))],
+        ],
+        colWidths=[2.8 * inch, 3.6 * inch],
+    )
+    summary_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), PRIMARY),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F8FAFC')]),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E2E8F0')),
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('PADDING', (0, 0), (-1, -1), 7),
+    ]))
+    story.append(summary_table)
+    story.append(Spacer(1, 14))
+
+    story.append(Paragraph('Top Apps', h2_style))
+    app_rows = usage.get('most_used_apps', []) or []
+    app_table_data = [['App', 'Minutes', 'Hours']]
+    for item in app_rows[:8]:
+        app_table_data.append([
+            str(item.get('app', '-')),
+            str(item.get('minutes', 0)),
+            str(item.get('hours', 0)),
+        ])
+    if len(app_table_data) == 1:
+        app_table_data.append(['No data', '-', '-'])
+    app_table = Table(app_table_data, colWidths=[3.2 * inch, 1.5 * inch, 1.7 * inch])
+    app_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), PRIMARY),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F8FAFC')]),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E2E8F0')),
+        ('FONTSIZE', (0, 0), (-1, -1), 9.5),
+        ('PADDING', (0, 0), (-1, -1), 6),
+    ]))
+    story.append(app_table)
+    story.append(Spacer(1, 12))
+
+    story.append(Paragraph('Category Breakdown', h2_style))
+    cat_table_data = [['Category', 'Hours', 'Share %']]
+    for row in (usage.get('category_breakdown', []) or [])[:8]:
+        cat_table_data.append([
+            str(row.get('category', '-')),
+            str(row.get('hours', 0)),
+            str(row.get('percentage', 0)),
+        ])
+    if len(cat_table_data) == 1:
+        cat_table_data.append(['No data', '-', '-'])
+    cat_table = Table(cat_table_data, colWidths=[3.2 * inch, 1.5 * inch, 1.7 * inch])
+    cat_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), PRIMARY),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F8FAFC')]),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E2E8F0')),
+        ('FONTSIZE', (0, 0), (-1, -1), 9.5),
+        ('PADDING', (0, 0), (-1, -1), 6),
+    ]))
+    story.append(cat_table)
+    story.append(Spacer(1, 12))
+
+    story.append(Paragraph('Planner and Focus', h2_style))
+    story.append(Paragraph(f"Tasks completed: {planner.get('tasks_completed', 0)} / {planner.get('tasks_planned', 0)}", body_style))
+    story.append(Paragraph(f"Best task window: {planner.get('best_task_window', '-')}", body_style))
+    story.append(Paragraph(f"Focus sessions: {focus_mode.get('total_focus_sessions', 0)}", body_style))
+    story.append(Paragraph(f"Focus hours this period: {focus_mode.get('focus_hours_this_period', 0)}", body_style))
+    story.append(Paragraph(f"Websites blocked: {focus_mode.get('websites_blocked', 0)}", body_style))
+    story.append(Spacer(1, 12))
+
+    story.append(Paragraph('Productivity Score Components', h2_style))
+    comps = productivity.get('components', {})
+    comp_table = Table(
+        [
+            ['Component', 'Value'],
+            ['Focus component', str(comps.get('focus_component', 0))],
+            ['Task completion rate', str(comps.get('task_completion_rate', 0))],
+            ['Low entertainment usage', str(comps.get('low_entertainment_usage', 0))],
+            ['Mood score component', str(comps.get('mood_score_component', 0))],
+        ],
+        colWidths=[3.2 * inch, 2.6 * inch],
+    )
+    comp_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), PRIMARY),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F8FAFC')]),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E2E8F0')),
+        ('FONTSIZE', (0, 0), (-1, -1), 9.5),
+        ('PADDING', (0, 0), (-1, -1), 6),
+    ]))
+    story.append(comp_table)
+    story.append(Spacer(1, 12))
+
+    story.append(Paragraph('AI Insights', h2_style))
+    if insights:
+        for i, txt in enumerate(insights[:8], start=1):
+            story.append(Paragraph(f"{i}. {txt}", body_style))
+    else:
+        story.append(Paragraph('No insights available for this period.', body_style))
+    story.append(Spacer(1, 10))
+
+    story.append(HRFlowable(width='100%', thickness=0.5, color=MUTED))
+    story.append(Spacer(1, 6))
+    story.append(Paragraph(f"Generated on {datetime.now().strftime('%Y-%m-%d %H:%M')} by DigiWell", sub_style))
+
+    doc.build(story)
+    return {"status": "success", "filepath": filepath, "filename": filename}

@@ -113,7 +113,45 @@ export const chatWithLifeCoach = async (message, history = []) => {
 
 // ── Reports ──
 export const downloadDailyReport  = () => window.open(`${BASE_URL}/reports/daily`, '_blank')
-export const downloadWeeklyReport = () => window.open(`${BASE_URL}/reports/weekly`, '_blank')
+export const downloadWeeklyReport = () => window.open(`${BASE_URL}/reports/weekly?format=pdf`, '_blank')
+export const downloadWeeklySummaryReport = () => window.open(`${BASE_URL}/reports/weekly?download=1`, '_blank')
+export const downloadMonthlySummaryReport = () => window.open(`${BASE_URL}/reports/monthly?download=1`, '_blank')
+
+export const getProfileSummary = async () => {
+  if (USE_MOCK) {
+    return {
+      user_info: { name: mock.currentUser.name, email: 'arjun.reddy@digiwell.app', join_date: '2025-01-10', profile_picture: '' },
+      productivity_summary: { average_daily_screen_time_hours: 4.3, weekly_productivity_score: 72, total_focus_hours: 14.2 },
+      streak_statistics: { current_streak: 4, longest_streak: 8, total_successful_days: 17 },
+      task_completion_stats: { total_tasks_created: 26, tasks_completed_this_week: 14, weekly_completion_percentage: 74 },
+      focus_mode_stats: { total_focus_sessions: 9, websites_blocked: 12, focus_hours_this_week: 6.5 },
+      mood_journal_summary: { total_journal_entries: 7, average_mood_score: 3.8, mood_trend_graph: [] },
+      app_usage_summary: { most_used_app: 'YouTube', most_productive_app: 'VS Code', most_distracting_app: 'Instagram' },
+      achievements: [],
+      charts: { weekly_screen_time_graph: [], task_completion_graph: [], mood_trend_line_chart: [] }
+    }
+  }
+  const res = await axios.get(`${BASE_URL}/profile/summary`)
+  return res.data
+}
+
+export const getWeeklyReport = async () => {
+  if (USE_MOCK) return { report_type: 'weekly', totals: {}, usage: {}, charts: {}, ai_insights: [], productivity_score: { score: 0, components: {} } }
+  const res = await axios.get(`${BASE_URL}/reports/weekly`)
+  return res.data
+}
+
+export const getMonthlyReport = async () => {
+  if (USE_MOCK) return { report_type: 'monthly', totals: {}, usage: {}, charts: {}, ai_insights: [], productivity_score: { score: 0, components: {} }, monthly_summary: {} }
+  const res = await axios.get(`${BASE_URL}/reports/monthly`)
+  return res.data
+}
+
+export const getReportsProductivityScore = async (period = 'weekly') => {
+  if (USE_MOCK) return { period, score: 73, components: { focus_component: 70, task_completion_rate: 78, low_entertainment_usage: 68, mood_score_component: 76 } }
+  const res = await axios.get(`${BASE_URL}/reports/productivity-score`, { params: { period } })
+  return res.data
+}
 
 // ── AI Coach (Ollama) ──
 export const chatWithDigiWell = async (message) => {

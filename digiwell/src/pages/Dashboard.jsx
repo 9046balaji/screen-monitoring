@@ -8,8 +8,8 @@ import HourlyBarChart from '../components/charts/HourlyBarChart';
 import AppDonutChart from '../components/charts/AppDonutChart';
 import WeeklyLineChart from '../components/charts/WeeklyLineChart';
 import RiskBadge from '../components/ui/RiskBadge';
-import { todayHourlyUsage, weeklyTrend, appBreakdown, currentUser, mentalHealthScores as mockMentalHealth, productivityData as mockProductivity } from '../data/mockData';
-import { predictUsageCategory, getMentalHealthRisk, predictProductivity, getUserCluster, checkAnomaly, getWellnessScore, getInterventions, resolveIntervention, predictRealtimeDoomscroll, getProductivityScore, predictBurnoutRisk, getDailyReflection } from '../api/digiwell';
+import { weeklyTrend as mockWeeklyTrend, currentUser, mentalHealthScores as mockMentalHealth, productivityData as mockProductivity } from '../data/mockData';
+import { predictUsageCategory, getMentalHealthRisk, predictProductivity, getUserCluster, checkAnomaly, getWellnessScore, getInterventions, resolveIntervention, predictRealtimeDoomscroll, getProductivityScore, predictBurnoutRisk, getDailyReflection, getDailyUsage, getAnalyticsWeekly } from '../api/digiwell';
 
 export default function Dashboard() {
   const [usageCategory, setUsageCategory] = useState(null);
@@ -23,12 +23,39 @@ export default function Dashboard() {
   const [interventions, setInterventions] = useState([]);
   const [doomWarning, setDoomWarning] = useState(null);
   const [dailyReflection, setDailyReflection] = useState(null);
+  const [todayUsage, setTodayUsage] = useState(null);
+  const [weeklyTrendData, setWeeklyTrendData] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  const formatDurationSeconds = (seconds = 0) => {
+    const totalMinutes = Math.max(0, Math.round(seconds / 60));
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    return `${hours}h ${minutes}m`;
+  };
+
+  const mapWeeklyTimeline = (weeklyRes) => {
+    if (!weeklyRes?.timeline || !Array.isArray(weeklyRes.timeline)) return [];
+    return weeklyRes.timeline.map((entry) => ({
+      day: entry.day,
+      minutes: Math.round(entry.minutes || 0),
+      goal: 180,
+    }));
+  };
 
   useEffect(() => {
     async function fetchData() {
       try {
-        const [usageRes, mentalRes, prodRes, segRes, anomalyRes, wellnessRes, interventionRes, focusProdRes, burnoutRes, reflectionRes] = await Promise.allSettled([
+        const dailyUsageRes = await getDailyUsage().catch(() => null);
+        if (dailyUsageRes) {
+          setTodayUsage(dailyUsageRes);
+        }
+
+        const todayScreenHours = dailyUsageRes?.total_screen_time_seconds
+          ? Number((dailyUsageRes.total_screen_time_seconds / 3600).toFixed(2))
+          : 0;
+
+        const [usageRes, mentalRes, prodRes, segRes, anomalyRes, wellnessRes, interventionRes, focusProdRes, burnoutRes, reflectionRes, weeklyRes] = await Promise.allSettled([
           predictUsageCategory({
             age_scaled: currentUser.age / 50,
             income_scaled: currentUser.income / 100000,
@@ -56,7 +83,7 @@ export default function Dashboard() {
             comparison_score: 3,
             comparison_feeling: 3,
             validation_seeking: 3,
-            avg_daily_usage: 6.3,
+            avg_daily_usage: todayScreenHours,
             age: currentUser.age,
           }),
           predictProductivity({
@@ -81,21 +108,22 @@ export default function Dashboard() {
             gender_encoded: currentUser.gender === 'male' ? 0 : 1,
           }),
           getUserCluster({
-            time_spent: 6.3,
+            time_spent: todayScreenHours,
             age: currentUser.age,
             income: currentUser.income,
             platform_risk_score: 3,
           }),
-          checkAnomaly(6.3),
+          checkAnomaly(todayScreenHours),
           getWellnessScore(),
           getInterventions(),
           getProductivityScore(),
           predictBurnoutRisk({
-            screen_time_hours: 6.3,
+            screen_time_hours: todayScreenHours,
             mood_score: 5, // mock mood score
             sleep_hours: 6 // mock sleep
           }),
-          getDailyReflection()
+          getDailyReflection(),
+          getAnalyticsWeekly()
         ]);
 
         if (usageRes.status === 'fulfilled') setUsageCategory(usageRes.value);
@@ -108,6 +136,10 @@ export default function Dashboard() {
         if (focusProdRes.status === 'fulfilled') setFocusProdData(focusProdRes.value);
         if (burnoutRes.status === 'fulfilled') setBurnoutData(burnoutRes.value);
         if (reflectionRes.status === 'fulfilled') setDailyReflection(reflectionRes.value);
+        if (weeklyRes.status === 'fulfilled') {
+          const mapped = mapWeeklyTimeline(weeklyRes.value);
+          setWeeklyTrendData(mapped);
+        }
 
         checkDoomScroll();
       } catch (err) {
@@ -189,7 +221,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard
           title="Today's Screen Time"
-          value="6h 20m"
+          value={loading ? '...' : formatDurationSeconds(todayUsage?.total_screen_time_seconds || 0)}
           subtitle={
             <span className="text-danger flex items-center gap-1">
               {usageLabel}{usageConfidence ? ` (${Math.round(usageConfidence * 100)}% conf.)` : ''}
@@ -346,12 +378,12 @@ export default function Dashboard() {
       </div>
 
       {/* Hourly Usage Chart */}
-      <HourlyBarChart data={todayHourlyUsage} delay={0.7} />
+      <HourlyBarChart data={[]} delay={0.7} />
 
       {/* Bottom Row: App Breakdown & Weekly Trend */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <AppDonutChart data={appBreakdown} delay={0.8} />
-        <WeeklyLineChart data={weeklyTrend} delay={0.9} />
+        <AppDonutChart data={[]} delay={0.8} />
+        <WeeklyLineChart data={weeklyTrendData.length ? weeklyTrendData : mockWeeklyTrend} delay={0.9} />
       </div>
     </div>
   );
