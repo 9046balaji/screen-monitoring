@@ -334,3 +334,115 @@ export const completeCommitment = async (id) => {
   if (!res.ok) throw new Error('Failed to complete commitment');
   return res.json();
 }
+
+
+export const getDailyUsage = async () => {
+  const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+  const res = await axios.get(`${BASE_URL}/usage/daily`);
+  return res.data;
+}
+
+export const getHourlyUsage = async () => {
+  const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+  const res = await axios.get(`${BASE_URL}/usage/hourly`);
+  return res.data;
+}
+
+
+// ── PLANNER & WEEKLY TIMETABLE ──────────────────────────
+
+export const getTimetables = async () => {
+  const res = await fetch(${API_BASE}/api/timetable);
+  return res.json();
+};
+
+export const createTimetable = async (data) => {
+  const res = await fetch(${API_BASE}/api/timetable, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  return res.json();
+};
+
+export const updateTimetable = async (id, data) => {
+  const res = await fetch(${API_BASE}/api/timetable/, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  return res.json();
+};
+
+export const deleteTimetable = async (id) => {
+  const res = await fetch(${API_BASE}/api/timetable/, { method: 'DELETE' });
+  return res.json();
+};
+
+export const createTimetableSlot = async (timetableId, data) => {
+  const res = await fetch(${API_BASE}/api/timetable//slot, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  return res.json();
+};
+
+export const updateTimetableSlot = async (slotId, data) => {
+  const res = await fetch(${API_BASE}/api/timetable/slot/, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  return res.json();
+};
+
+export const deleteTimetableSlot = async (slotId) => {
+  const res = await fetch(${API_BASE}/api/timetable/slot/, { method: 'DELETE' });
+  return res.json();
+};
+
+export const generateDailyTasks = async (timetableId, date) => {
+  const res = await fetch(${API_BASE}/api/timetable//generate-daily?date=, { method: 'POST' });
+  return res.json();
+};
+
+export const getDailyTasks = async (date) => {
+  const res = await fetch(${API_BASE}/api/dailytasks?date=);
+  return res.json();
+};
+
+export const updateDailyTask = async (taskId, data) => {
+  const res = await fetch(${API_BASE}/api/dailytasks/, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  return res.json();
+};
+
+export const startDailyTask = async (taskId) => {
+  const res = await fetch(${API_BASE}/api/dailytasks//start, { method: 'POST' });
+  return res.json();
+};
+
+export const completeDailyTask = async (taskId) => {
+  const res = await fetch(${API_BASE}/api/dailytasks//complete, { method: 'POST' });
+  return res.json();
+};
+
+export const skipDailyTask = async (taskId) => {
+  const res = await fetch(${API_BASE}/api/dailytasks//skip, { method: 'POST' });
+  return res.json();
+};
+
+export const getPlannerAdherence = async (date) => {
+  const res = await fetch(${API_BASE}/api/planner/adherence?date=, { method: 'POST' });
+  return res.json();
+};
+
+export const getPlannerSuggestions = async (date) => {
+  const res = await fetch(${API_BASE}/api/planner/suggestions?date=);
+  return res.json();
+};
+
