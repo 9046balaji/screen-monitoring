@@ -79,6 +79,93 @@ MIGRATIONS = [
             outcome JSON
         );
         """
+    },
+    {
+        "name": "migrate_005_create_screen_usage",
+        "sql": """
+        CREATE TABLE IF NOT EXISTS screen_usage (
+            id TEXT PRIMARY KEY,
+            timestamp DATETIME,
+            app_name TEXT,
+            window_title TEXT,
+            cpu_usage FLOAT,
+            memory_usage FLOAT,
+            duration_seconds INTEGER,
+            category TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_screen_usage_timestamp ON screen_usage(timestamp);
+        CREATE INDEX IF NOT EXISTS idx_screen_usage_app_name ON screen_usage(app_name);
+        """
+    },
+    {
+        "name": "migrate_006_create_weekly_timetable",
+        "sql": """
+        CREATE TABLE IF NOT EXISTS weekly_timetable (
+          id TEXT PRIMARY KEY,
+          user_id TEXT DEFAULT 'local',
+          name TEXT,
+          timezone TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS weekly_timetable_slots (
+          id TEXT PRIMARY KEY,
+          timetable_id TEXT REFERENCES weekly_timetable(id),
+          day_of_week INTEGER,
+          start_time TEXT,
+          end_time TEXT,
+          title TEXT,
+          description TEXT,
+          category TEXT,
+          focus_mode BOOLEAN DEFAULT 0,
+          recurrence JSON,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        """
+    },
+    {
+        "name": "migrate_007_create_daily_tasks_and_logs",
+        "sql": """
+        CREATE TABLE IF NOT EXISTS daily_tasks (
+          id TEXT PRIMARY KEY,
+          user_id TEXT DEFAULT 'local',
+          date DATE NOT NULL,
+          slot_id TEXT,
+          planned_start DATETIME,
+          planned_end DATETIME,
+          title TEXT,
+          description TEXT,
+          category TEXT,
+          status TEXT DEFAULT 'scheduled',
+          actual_start DATETIME,
+          actual_end DATETIME,
+          duration_planned_minutes INTEGER,
+          duration_actual_minutes INTEGER,
+          metadata JSON,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_daily_tasks_date ON daily_tasks(date);
+        """
+    },
+    {
+        "name": "migrate_008_create_adherence_reports",
+        "sql": """
+        CREATE TABLE IF NOT EXISTS adherence_reports (
+          id TEXT PRIMARY KEY,
+          user_id TEXT DEFAULT 'local',
+          date DATE NOT NULL,
+          planned_total_minutes INTEGER,
+          actual_total_minutes INTEGER,
+          completed_tasks INTEGER,
+          scheduled_tasks INTEGER,
+          adherence_score FLOAT,
+          details JSON,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        """
     }
 ]
 
