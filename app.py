@@ -2258,3 +2258,20 @@ def patch_daily_task(task_id):
         return jsonify(status="updated")
     except Exception as e:
         return jsonify(error=str(e)), 500
+
+from planner_suggestions import generate_suggestions
+
+@app.route('/api/planner/suggestions', methods=['GET'])
+def get_planner_suggestions():
+    try:
+        target_date = request.args.get('date')
+        if not target_date:
+            return jsonify(error="date param required"), 400
+            
+        conn = get_db_connection()
+        suggestions = generate_suggestions(target_date, conn)
+        conn.close()
+        
+        return jsonify(suggestions)
+    except Exception as e:
+        return jsonify(error=str(e)), 500

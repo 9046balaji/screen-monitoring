@@ -7,6 +7,16 @@ from cachetools import cached, TTLCache
 prediction_cache = TTLCache(maxsize=100, ttl=30)
 
 # Production model loading at startup
+import __main__
+if not hasattr(__main__, 'MockModel'):
+    class MockModel:
+        def __init__(self):
+            self.type = "random_forest_mock"
+            self.feature_importances = {"Late night (pm)": 0.4, "Recent negative mood": 0.35, "Long unused focus mode": 0.25}
+        def predict(self, features):
+            return 0.85
+    __main__.MockModel = MockModel
+
 RELAPSE_MODEL = None
 models_dir = os.path.join(os.path.dirname(__file__), 'models')
 model_path = os.path.join(models_dir, 'relapse_model.pkl')
@@ -185,3 +195,31 @@ Instructions:
         f"Let's break the cycle and take a 5 minute reset loop right away. You've got this!"
     )
     return reply_text
+
+
+def suggest_planner_changes(context):
+    try:
+        from openai import OpenAI
+        import os
+        import json
+        client = OpenAI(api_key=os.environ.get('OPENAI_API_KEY'))
+        
+        prompt = f"""
+        You are a schedule optimization coach. Given the user's data:
+        {json.dumps(context, indent=2)}
+        
+        Provide 3 prioritized suggestions to improve adherence. Return purely in JSON format:
+        [
+          {{"severity": "high|medium|low", "action": "description of suggestion"}}
+        ]
+        """
+        
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7
+        )
+        return json.loads(response.choices[0].message.content)
+    except Exception as e:
+        print("LLM Suggestion Error:", e)
+        return []
