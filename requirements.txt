@@ -7,11 +7,11 @@ pandas
 numpy
 joblib
 psutil
-pywin32
+pywin32; sys_platform == 'win32'
 plyer
 reportlab
 schedule
-pygetwindow
+pygetwindow; sys_platform == 'win32'
 pydantic
 pytest
 pytest-flask
