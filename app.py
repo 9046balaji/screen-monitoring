@@ -673,7 +673,12 @@ def analytics_daily():
 @app.route('/api/analytics/weekly', methods=['GET'])
 def weekly_analytics():
     try:
-        return jsonify(analytics_service.get_weekly_usage(user_id='local', days=7))
+        weekly = analytics_service.get_weekly_usage(user_id='local', days=7)
+        apps = analytics_service.get_weekly_app_usage(user_id='local', days=7)
+        total_screen_time = sum(int(a.get('minutes', 0)) for a in apps)
+        weekly['apps'] = apps
+        weekly['total_screen_time'] = total_screen_time
+        return jsonify(weekly)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

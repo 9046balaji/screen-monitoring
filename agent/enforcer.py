@@ -190,11 +190,11 @@ def focus_violation_event(domain):
     try:
         notification.notify(
             title='🚫 Focus Violation',
-            message=f'{domain} is blocked during Focus Mode. Get back to work!',
+            message='🚫 This website is blocked during Focus Mode.',
             app_name='DigiWell',
             timeout=5
         )
-        show_break_screen(duration_seconds=10, message=f"🚫 {domain} is blocked during Focus Mode.\\nStay focused!")
+        show_break_screen(duration_seconds=10, message=f"🚫 This website is blocked during Focus Mode.\\n({domain})")
     except:
         pass
 

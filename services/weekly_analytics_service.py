@@ -15,7 +15,7 @@ class WeeklyAnalyticsService:
 
     def _load_category_map(self) -> Dict[str, str]:
         merged: Dict[str, str] = {}
-        for path in [self.data_categories_path, self.config_categories_path]:
+        for path in [self.config_categories_path, self.data_categories_path]:
             if not os.path.exists(path):
                 continue
             try:
@@ -28,8 +28,20 @@ class WeeklyAnalyticsService:
                 continue
         return merged
 
+    @staticmethod
+    def _canonical_key(app_name: str) -> str:
+        key = (app_name or "").lower().replace(".exe", "").strip()
+        aliases = {
+            "microsoft edge": "msedge",
+            "edge": "msedge",
+            "visual studio code": "code",
+            "vs code": "code",
+            "file explorer": "explorer",
+        }
+        return aliases.get(key, key)
+
     def _classify(self, app_name: str, category_map: Dict[str, str]) -> str:
-        key = (app_name or "").lower().replace(".exe", "")
+        key = self._canonical_key(app_name)
         if key in category_map:
             return category_map[key].title()
 
@@ -38,6 +50,32 @@ class WeeklyAnalyticsService:
                 return category.title()
 
         return "Other"
+
+    @staticmethod
+    def _norm_app_name(app_name: str) -> str:
+        raw = (app_name or "").strip()
+        low = raw.lower().replace('.exe', '')
+
+        aliases = {
+            'code': 'VS Code',
+            'code - insiders': 'VS Code Insiders',
+            'msedge': 'Microsoft Edge',
+            'chrome': 'Google Chrome',
+            'firefox': 'Firefox',
+            'explorer': 'File Explorer',
+            'windowsterminal': 'Windows Terminal',
+            'windowsterminal.exe': 'Windows Terminal',
+            'taskmgr': 'Task Manager',
+        }
+
+        if low in aliases:
+            return aliases[low]
+
+        # Handle values like WhatsApp.Root while preserving human readability.
+        if '.' in raw and raw.lower().endswith('.root'):
+            raw = raw.split('.', 1)[0]
+
+        return raw
 
     @staticmethod
     def _week_range(today: date = None) -> Dict[str, date]:
@@ -59,18 +97,7 @@ class WeeklyAnalyticsService:
         conn = get_db_connection()
         c = conn.cursor()
 
-        c.execute(
-            """
-            SELECT app_name, SUM(duration_minutes) AS total_minutes
-            FROM app_usage_logs
-            WHERE user_id = ? AND date BETWEEN ? AND ?
-            GROUP BY app_name
-            ORDER BY total_minutes DESC
-            """,
-            (user_id, ranges["start"].isoformat(), ranges["end"].isoformat()),
-        )
-        app_rows = c.fetchall()
-
+        # Previous week for week-over-week comparisons
         c.execute(
             """
             SELECT app_name, SUM(duration_minutes) AS total_minutes
@@ -85,6 +112,19 @@ class WeeklyAnalyticsService:
 
         c.execute(
             """
+            SELECT app_name, SUM(duration_minutes) AS total_minutes
+            FROM app_usage_logs
+            WHERE user_id = ? AND date BETWEEN ? AND ?
+            GROUP BY app_name
+            ORDER BY total_minutes DESC
+            """,
+            (user_id, ranges["start"].isoformat(), ranges["end"].isoformat()),
+        )
+        app_rows = c.fetchall()
+
+        # Per-day totals by source for daily series.
+        c.execute(
+            """
             SELECT date, SUM(duration_minutes) AS total_minutes
             FROM app_usage_logs
             WHERE user_id = ? AND date BETWEEN ? AND ?
@@ -97,15 +137,17 @@ class WeeklyAnalyticsService:
 
         conn.close()
 
-        total_weekly = sum(int(r["total_minutes"] or 0) for r in app_rows)
-        total_prev = sum(int(r["total_minutes"] or 0) for r in prev_rows)
+        total_weekly = sum(float(r["total_minutes"] or 0) for r in app_rows)
+        total_prev = sum(float(r["total_minutes"] or 0) for r in prev_rows)
 
         app_data: List[Dict[str, Any]] = []
         category_totals = defaultdict(int)
 
         for r in app_rows:
-            app_name = r["app_name"]
-            minutes = int(r["total_minutes"] or 0)
+            app_name = self._norm_app_name(r["app_name"])
+            minutes = int(round(float(r["total_minutes"] or 0)))
+            if minutes <= 0:
+                continue
             category = self._classify(app_name, category_map)
             category_totals[category] += minutes
             pct = round((minutes / total_weekly) * 100, 2) if total_weekly else 0.0
@@ -130,33 +172,34 @@ class WeeklyAnalyticsService:
                 }
             )
 
-        daily_map = {r["date"]: int(r["total_minutes"] or 0) for r in day_rows}
+        daily_map = {r["date"]: float(r["total_minutes"] or 0) for r in day_rows}
         daily_series = []
         cursor = ranges["start"]
         while cursor <= ranges["end"]:
             key = cursor.isoformat()
+            day_total = daily_map.get(key, 0.0)
             daily_series.append(
                 {
                     "date": key,
                     "day": cursor.strftime("%a"),
-                    "minutes": daily_map.get(key, 0),
+                    "minutes": int(round(day_total)),
                 }
             )
             cursor += timedelta(days=1)
 
-        avg_daily = round(total_weekly / 7, 2)
+        avg_daily = round(total_weekly / 7.0, 2)
         top_apps = app_data[:5]
         primary_category = categories[0]["category"] if categories else "Other"
         primary_category_pct = categories[0]["percentage"] if categories else 0
 
         youtube_current = 0
         youtube_previous = 0
-        for r in app_rows:
-            if "youtube" in (r["app_name"] or "").lower():
-                youtube_current += int(r["total_minutes"] or 0)
+        for r in app_data:
+            if "youtube" in (r["app"] or "").lower():
+                youtube_current += int(r["minutes"] or 0)
         for r in prev_rows:
             if "youtube" in (r["app_name"] or "").lower():
-                youtube_previous += int(r["total_minutes"] or 0)
+                youtube_previous += int(round(float(r["total_minutes"] or 0)))
 
         youtube_delta_pct = 0.0
         if youtube_previous > 0:
@@ -181,6 +224,7 @@ class WeeklyAnalyticsService:
             cat = self._classify(app_name, category_map)
             if cat in productive_labels:
                 hour_bucket[int(row["hour"] or 0)] += int(row["duration_minutes"] or 0)
+
         conn.close()
 
         best_hours = sorted(hour_bucket.items(), key=lambda x: x[1], reverse=True)[:3]
@@ -201,7 +245,7 @@ class WeeklyAnalyticsService:
                 "start_date": ranges["start"].isoformat(),
                 "end_date": ranges["end"].isoformat(),
             },
-            "total_screen_time": total_weekly,
+            "total_screen_time": int(round(total_weekly)),
             "total_screen_time_hours": round(total_weekly / 60.0, 2),
             "average_daily_usage": avg_daily,
             "average_daily_usage_hours": round(avg_daily / 60.0, 2),

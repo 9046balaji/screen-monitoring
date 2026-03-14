@@ -13,6 +13,7 @@ from database.database import get_db_connection
 
 
 POLL_SECONDS = 5
+FLUSH_INTERVAL_SECONDS = 60
 
 APP_FRIENDLY = {
     "chrome.exe": "Chrome",
@@ -74,7 +75,11 @@ def save_usage_record(user_id: str, active: dict, start_dt: datetime, end_dt: da
     if not active:
         return
 
-    duration_min = max(1, int((end_dt - start_dt).total_seconds() // 60))
+    elapsed_seconds = int((end_dt - start_dt).total_seconds())
+    if elapsed_seconds <= 0:
+        return
+
+    duration_min = max(1, elapsed_seconds // 60)
 
     conn = get_db_connection()
     c = conn.cursor()
@@ -125,6 +130,7 @@ class AppUsageTracker:
         self.poll_seconds = poll_seconds
         self.current_active = None
         self.current_start = None
+        self.flush_interval_seconds = FLUSH_INTERVAL_SECONDS
 
     def _flush_current(self):
         if self.current_active and self.current_start:
@@ -156,6 +162,11 @@ class AppUsageTracker:
                     self._flush_current()
                     self.current_active = active
                     self.current_start = now
+                else:
+                    # Persist long-running sessions periodically so analytics updates without waiting for app switch.
+                    if self.current_start and (now - self.current_start).total_seconds() >= self.flush_interval_seconds:
+                        save_usage_record(self.user_id, self.current_active, self.current_start, now)
+                        self.current_start = now
 
                 time.sleep(self.poll_seconds)
         except KeyboardInterrupt:

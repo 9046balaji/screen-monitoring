@@ -60,6 +60,7 @@ export default function Analytics() {
 
   useEffect(() => {
     let active = true;
+    let pollId;
 
     async function loadAnalytics() {
       try {
@@ -113,8 +114,11 @@ export default function Analytics() {
     }
 
     loadAnalytics();
+    pollId = setInterval(loadAnalytics, 30000);
+
     return () => {
       active = false;
+      if (pollId) clearInterval(pollId);
     };
   }, []);
 

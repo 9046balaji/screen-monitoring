@@ -182,6 +182,39 @@ class AnalyticsService:
             "by_day": by_day,
         }
 
+    def get_weekly_app_usage(self, user_id: str = "local", days: int = 7) -> List[Dict[str, Any]]:
+        end_date = datetime.now().date()
+        start_date = end_date - timedelta(days=days - 1)
+
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute(
+            """
+            SELECT app_name, SUM(duration_minutes) AS total_minutes
+            FROM app_usage_logs
+            WHERE user_id = ? AND date BETWEEN ? AND ?
+            GROUP BY app_name
+            ORDER BY total_minutes DESC
+            """,
+            (user_id, start_date.isoformat(), end_date.isoformat()),
+        )
+        rows = c.fetchall()
+        conn.close()
+
+        apps: List[Dict[str, Any]] = []
+        for row in rows:
+            minutes = int(round(float(row["total_minutes"] or 0)))
+            if minutes <= 0:
+                continue
+            apps.append(
+                {
+                    "app_name": row["app_name"],
+                    "minutes": minutes,
+                }
+            )
+
+        return apps
+
     def get_heatmap(self, user_id: str = "local", days: int = 7) -> List[Dict[str, Any]]:
         end_date = datetime.now().date()
         start_date = end_date - timedelta(days=days - 1)

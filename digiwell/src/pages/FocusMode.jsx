@@ -27,6 +27,7 @@ export default function FocusMode() {
   const [remainingTime, setRemainingTime] = useState(null)
   const [aiRecommendation, setAiRecommendation] = useState(null)
   const [loadingRec, setLoadingRec] = useState(false)
+  const [blockingStatus, setBlockingStatus] = useState(null)
 
   useEffect(() => {
     fetchStatus()
@@ -78,6 +79,7 @@ export default function FocusMode() {
     try {
       const data = await getFocusStatus()
       setStatus(data || { active: false })
+      setBlockingStatus(data?.website_blocking || null)
     } catch (e) {
       console.error(e)
     }
@@ -97,7 +99,8 @@ export default function FocusMode() {
 
   const handleStart = async () => {
     if (!sessionName) return
-    await startFocus({ session_name: sessionName, duration_minutes: duration, block_list: blockedApps, block_categories: blockedCategories })
+    const result = await startFocus({ session_name: sessionName, duration_minutes: duration, block_list: blockedApps, block_categories: blockedCategories })
+    setBlockingStatus(result?.website_blocking || null)
     fetchStatus()
   }
 
@@ -127,6 +130,12 @@ export default function FocusMode() {
       </div>
 
       {status.active && (
+        <div className={`rounded-lg border px-4 py-3 text-sm ${blockingStatus?.enforced ? 'border-emerald-300 bg-emerald-50 text-emerald-800' : 'border-amber-300 bg-amber-50 text-amber-900'}`}>
+          {blockingStatus?.enforced ? 'Website blocking is actively enforced at system level (hosts file).' : (blockingStatus?.message || 'Website blocking could not be enforced. Run DigiWell as Administrator to block sites across Chrome, Edge, Firefox, and Brave.')}
+        </div>
+      )}
+
+      {status.active && (
         <div className="bg-gradient-to-r from-emerald-500/10 to-teal-500/10 border border-emerald-500/30 rounded-2xl p-8 flex flex-col md:flex-row items-center justify-between gap-6 shadow-[0_0_30px_rgba(16,185,129,0.15)] relative overflow-hidden backdrop-blur-sm">
           <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500 animate-pulse"></div>
           <div>
@@ -137,6 +146,7 @@ export default function FocusMode() {
               {status.session_name}
             </h2>
               <p className="text-emerald-800/80 dark:text-emerald-100/70 text-sm">Focus Mode is guarding your attention right now.</p>
+              <p className="text-rose-700/80 dark:text-rose-300/80 text-xs mt-2">"🚫 This website is blocked during Focus Mode."</p>
             {status.apps_killed && status.apps_killed.length > 0 && (
               <div className="mt-4 flex flex-wrap items-center gap-2">
                 <span className="text-xs text-amber-600 dark:text-amber-400/80">Distractions blocked:</span>
