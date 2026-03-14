@@ -1,7 +1,26 @@
-__pycache__
-.github
-.vscode
-data
-tests
-scripts
-models
+# Python caches and artifacts
+__pycache__/
+*.py[cod]
+
+# Tooling and editor folders
+.vscode/
+.github/
+
+# Test caches
+.pytest_cache/
+.pytest*/
+
+# Project folders to keep out of GitHub (as requested)
+tests/
+scripts/
+
+# Local data/models outputs
+data/
+models/
+
+# Unwanted root helper files
+add_ai.py
+add_routes.py
+add_routes_patch.py
+add_routes_suggestions.py
+planner_suggestions.py
