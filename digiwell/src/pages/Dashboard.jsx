@@ -9,7 +9,7 @@ import AppDonutChart from '../components/charts/AppDonutChart';
 import WeeklyLineChart from '../components/charts/WeeklyLineChart';
 import RiskBadge from '../components/ui/RiskBadge';
 import { weeklyTrend as mockWeeklyTrend, currentUser, mentalHealthScores as mockMentalHealth, productivityData as mockProductivity } from '../data/mockData';
-import { predictUsageCategory, getMentalHealthRisk, predictProductivity, getUserCluster, checkAnomaly, getWellnessScore, getInterventions, resolveIntervention, predictRealtimeDoomscroll, getProductivityScore, predictBurnoutRisk, getDailyReflection, getDailyUsage, getAnalyticsWeekly } from '../api/digiwell';
+import { predictUsageCategory, getMentalHealthRisk, predictProductivity, getUserCluster, checkAnomaly, getWellnessScore, getInterventions, resolveIntervention, predictRealtimeDoomscroll, getProductivityScore, predictBurnoutRisk, getDailyReflection, getDailyUsage, getAnalyticsDaily, getAnalyticsWeekly } from '../api/digiwell';
 
 export default function Dashboard() {
   const [usageCategory, setUsageCategory] = useState(null);
@@ -23,7 +23,7 @@ export default function Dashboard() {
   const [interventions, setInterventions] = useState([]);
   const [doomWarning, setDoomWarning] = useState(null);
   const [dailyReflection, setDailyReflection] = useState(null);
-  const [todayUsage, setTodayUsage] = useState(null);
+  const [todayUsageSeconds, setTodayUsageSeconds] = useState(0);
   const [weeklyTrendData, setWeeklyTrendData] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -46,14 +46,23 @@ export default function Dashboard() {
   useEffect(() => {
     async function fetchData() {
       try {
-        const dailyUsageRes = await getDailyUsage().catch(() => null);
-        if (dailyUsageRes) {
-          setTodayUsage(dailyUsageRes);
+        // Keep Dashboard time aligned with Analytics by using analytics daily summary first.
+        const analyticsDailyRes = await getAnalyticsDaily().catch(() => null);
+        const analyticsMinutesRaw = analyticsDailyRes?.summary?.total_minutes;
+        const hasAnalyticsTotalMinutes = analyticsMinutesRaw !== null && analyticsMinutesRaw !== undefined && !Number.isNaN(Number(analyticsMinutesRaw));
+        const analyticsSeconds = hasAnalyticsTotalMinutes ? Number(analyticsMinutesRaw) * 60 : 0;
+
+        // Fallback for older backend routes where analytics daily is unavailable.
+        let fallbackSeconds = 0;
+        if (!hasAnalyticsTotalMinutes) {
+          const dailyUsageRes = await getDailyUsage().catch(() => null);
+          fallbackSeconds = Number(dailyUsageRes?.total_screen_time_seconds || 0);
         }
 
-        const todayScreenHours = dailyUsageRes?.total_screen_time_seconds
-          ? Number((dailyUsageRes.total_screen_time_seconds / 3600).toFixed(2))
-          : 0;
+        const resolvedTodaySeconds = analyticsSeconds || fallbackSeconds;
+        setTodayUsageSeconds(resolvedTodaySeconds);
+
+        const todayScreenHours = Number((resolvedTodaySeconds / 3600).toFixed(2));
 
         const [usageRes, mentalRes, prodRes, segRes, anomalyRes, wellnessRes, interventionRes, focusProdRes, burnoutRes, reflectionRes, weeklyRes] = await Promise.allSettled([
           predictUsageCategory({
@@ -221,7 +230,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard
           title="Today's Screen Time"
-          value={loading ? '...' : formatDurationSeconds(todayUsage?.total_screen_time_seconds || 0)}
+          value={loading ? '...' : formatDurationSeconds(todayUsageSeconds)}
           subtitle={
             <span className="text-danger flex items-center gap-1">
               {usageLabel}{usageConfidence ? ` (${Math.round(usageConfidence * 100)}% conf.)` : ''}
