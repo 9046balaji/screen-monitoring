@@ -1,3 +1,0 @@
-All models loaded successfully (including Anomaly Detector)
-Warning: Could not load relapse_model.pkl: Can't get attribute 'MockModel' on <module '__main__' (built-in)>
-{'response': 'I see you\'ve used 0 mins of screen time this hour. Looking at our chat (and your 2 past messages), I understand. A quick web insight: \'June 9, 2021 -My time-management mantra is "Do it now." Where are you procrastinating or delaying? I...\'. Let\'s work on that!', 'timestamp': '2026-03-13T20:11:45.502287'}
