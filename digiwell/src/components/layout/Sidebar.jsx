@@ -1,13 +1,11 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, BarChart2, TrendingUp, User, Heart, Monitor, Target, Bot, BookOpen, Trophy, Brain, Calendar, ListTodo } from 'lucide-react';
+import { LayoutDashboard, BarChart2, User, Heart, Monitor, Target, Bot, Trophy } from 'lucide-react';
 
 export default function Sidebar() {
   const navItems = [
     { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
-    { name: 'Timetable', path: '/timetable', icon: Calendar },
-    { name: 'Daily Plan', path: '/daily-tasks', icon: ListTodo },
     { name: 'Analytics', path: '/analytics', icon: BarChart2 },
-    { name: '7-Day Detox', path: '/detox', icon: Trophy },
+    { name: 'Time', path: '/detox', icon: Trophy },
     { name: 'AI Coach', path: '/coach', icon: Bot },
     { name: 'Profile', path: '/profile', icon: User },
     { name: 'Wellness Center', path: '/wellness', icon: Heart },

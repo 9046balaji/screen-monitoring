@@ -110,6 +110,31 @@ def init_db():
         )
     ''')
 
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS app_usage_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL DEFAULT 'local',
+            app_name TEXT NOT NULL,
+            window_title TEXT,
+            process_name TEXT,
+            start_time TEXT NOT NULL,
+            end_time TEXT NOT NULL,
+            duration_minutes INTEGER NOT NULL,
+            date TEXT NOT NULL
+        )
+    ''')
+
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS hourly_activity_table (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL DEFAULT 'local',
+            date TEXT NOT NULL,
+            hour INTEGER NOT NULL,
+            activity_level INTEGER NOT NULL,
+            UNIQUE(user_id, date, hour)
+        )
+    ''')
+
     conn.commit()
     conn.close()
 

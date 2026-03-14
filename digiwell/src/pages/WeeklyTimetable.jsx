@@ -50,7 +50,7 @@ export default function WeeklyTimetable() {
     try {
       await generateDailyTasks(activeTable.id, today);
       toast.success('Generated tasks for today!');
-      navigate('/daily-tasks');
+      navigate(`/detox?tab=daily&date=${today}`);
     } catch(e) {
       toast.error('Failed to generate tasks');
     }

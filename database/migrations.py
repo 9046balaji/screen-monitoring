@@ -166,6 +166,73 @@ MIGRATIONS = [
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
         """
+        },
+        {
+                "name": "migrate_009_create_weekly_tasks_and_daily_status",
+                "sql": """
+                CREATE TABLE IF NOT EXISTS weekly_tasks (
+                    id TEXT PRIMARY KEY,
+                    user_id TEXT DEFAULT 'local',
+                    day_of_week INTEGER NOT NULL,
+                    task_title TEXT NOT NULL,
+                    task_description TEXT,
+                    start_time TEXT,
+                    end_time TEXT,
+                    category TEXT DEFAULT 'Work',
+                    priority TEXT DEFAULT 'Medium',
+                    sort_order INTEGER DEFAULT 0,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE TABLE IF NOT EXISTS daily_task_status (
+                    id TEXT PRIMARY KEY,
+                    task_id TEXT NOT NULL,
+                    date TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_daily_task_status_task_date
+                    ON daily_task_status(task_id, date);
+                CREATE INDEX IF NOT EXISTS idx_weekly_tasks_day
+                    ON weekly_tasks(day_of_week);
+                """
+    },
+    {
+        "name": "migrate_010_create_app_usage_analytics_tables",
+        "sql": """
+        CREATE TABLE IF NOT EXISTS app_usage_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL DEFAULT 'local',
+            app_name TEXT NOT NULL,
+            window_title TEXT,
+            process_name TEXT,
+            start_time TEXT NOT NULL,
+            end_time TEXT NOT NULL,
+            duration_minutes INTEGER NOT NULL,
+            date TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_app_usage_logs_user_date
+            ON app_usage_logs(user_id, date);
+
+        CREATE INDEX IF NOT EXISTS idx_app_usage_logs_app
+            ON app_usage_logs(app_name);
+
+        CREATE TABLE IF NOT EXISTS hourly_activity_table (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL DEFAULT 'local',
+            date TEXT NOT NULL,
+            hour INTEGER NOT NULL,
+            activity_level INTEGER NOT NULL,
+            UNIQUE(user_id, date, hour)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_hourly_activity_user_date
+            ON hourly_activity_table(user_id, date);
+        """
     }
 ]
 

@@ -12,6 +12,9 @@ from pydantic import BaseModel, ValidationError
 from typing import Optional
 
 from database.database import init_db, get_db_connection
+from database.migrations import apply_migrations
+from services.analytics_service import AnalyticsService
+from services.weekly_analytics_service import WeeklyAnalyticsService
 
 app = Flask(__name__)
 # Allow local dev frontends (Vite/React) to access the API.
@@ -19,6 +22,7 @@ CORS(app, origins=["http://localhost:5173", "http://localhost:3000"])
 
 # Ensure DB is initialized
 init_db()
+apply_migrations()
 
 # ═══════════════════════════════════
 # FIX 7: Move ML logic into an InferenceService class
@@ -60,6 +64,8 @@ class InferenceService:
             print(f"Model loading error: {e}")
 
 inference_service = InferenceService()
+analytics_service = AnalyticsService()
+weekly_analytics_service = WeeklyAnalyticsService()
 
 # ═══════════════════════════════════
 # Pydantic Schemas
@@ -238,61 +244,7 @@ def predict_burnout():
 @app.route('/api/addiction-heatmap', methods=['GET'])
 def addiction_heatmap():
     try:
-        conn = get_db_connection()
-        c = conn.cursor()
-        
-        c.execute('''
-            SELECT 
-                strftime('%w', timestamp) as weekday,
-                strftime('%H', timestamp) as hour,
-                SUM(duration_seconds) as total_seconds 
-            FROM screen_usage 
-            WHERE category IN ('social', 'entertainment')
-            GROUP BY weekday, hour
-        ''')
-        rows = c.fetchall()
-        conn.close()
-
-        day_mapping = {"1": "Mon", "2": "Tue", "3": "Wed", "4": "Thu", "5": "Fri", "6": "Sat", "0": "Sun"}
-        data_map = {d: {h: 0 for h in range(24)} for d in day_mapping.values()}
-        
-        for r in rows:
-            weekday = r['weekday']
-            if weekday is None: continue
-            d_name = day_mapping.get(str(weekday))
-            hour_val = r['hour']
-            if d_name and hour_val is not None:
-                data_map[d_name][int(hour_val)] = r['total_seconds']
-        
-        days_order = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-        heatmap_data = []
-
-        import random
-        has_real_data = len(rows) > 0
-
-        for d in days_order:
-            day_hours = []
-            for h in range(24):
-                if has_real_data:
-                    secs = data_map[d][h]
-                    if secs > 2700: risk = "Very High"
-                    elif secs > 1800: risk = "High"
-                    elif secs > 900: risk = "Medium"
-                    elif secs > 0: risk = "Low"
-                    else: risk = "None"
-                else:
-                    risk = "None"
-                    if d in ["Sat", "Sun"] and 10 <= h <= 23:
-                        risk = random.choice(["Medium", "High", "Very High"])
-                    elif d not in ["Sat", "Sun"] and 18 <= h <= 23:
-                        risk = random.choice(["Medium", "High", "Very High"])
-                    elif d not in ["Sat", "Sun"] and 12 <= h <= 13:
-                        risk = "Medium"
-                
-                day_hours.append({"hour": h, "risk": risk})
-            heatmap_data.append({"day": d, "hours": day_hours})
-            
-        return jsonify(heatmap_data)
+        return jsonify(analytics_service.get_heatmap(user_id='local', days=7))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -706,22 +658,54 @@ def predict_realtime_doomscroll():
 
 
 # ═══════════════════════════════════
-# FIX 12: /api/analytics/weekly — new endpoint
+# Analytics Endpoints (real usage pipeline)
 # ═══════════════════════════════════
+@app.route('/api/analytics/daily', methods=['GET'])
+def analytics_daily():
+    try:
+        data = analytics_service.get_daily_usage(user_id='local')
+        data['battery'] = analytics_service.get_battery_usage_summary()
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route('/api/analytics/weekly', methods=['GET'])
 def weekly_analytics():
     try:
-        df = pd.read_csv('data/dummy_data.csv')
-        stats = {
-            "avg_daily_usage_hours": round(float(df['time_spent'].mean()), 2),
-            "max_usage_hours": int(df['time_spent'].max()),
-            "min_usage_hours": int(df['time_spent'].min()),
-            "pct_excessive": round(float((df['time_spent'] >= 7).mean() * 100), 1),
-            "pct_healthy": round(float((df['time_spent'] <= 3).mean() * 100), 1),
-            "top_platform": df['platform'].mode()[0],
-            "timestamp": datetime.utcnow().isoformat()
-        }
-        return jsonify(stats)
+        return jsonify(analytics_service.get_weekly_usage(user_id='local', days=7))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/analytics/heatmap', methods=['GET'])
+def analytics_heatmap():
+    try:
+        return jsonify(analytics_service.get_heatmap(user_id='local', days=7))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/analytics/top-apps', methods=['GET'])
+def analytics_top_apps():
+    try:
+        return jsonify(analytics_service.get_top_apps(user_id='local', days=7, limit=5))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/analytics/ai-insights', methods=['GET'])
+def analytics_ai_insights():
+    try:
+        return jsonify(analytics_service.get_ai_insights(user_id='local'))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/analytics/weekly-app-usage', methods=['GET'])
+def analytics_weekly_app_usage():
+    try:
+        return jsonify(weekly_analytics_service.get_weekly_app_usage_report(user_id='local'))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -1180,7 +1164,7 @@ def check_anomaly():
 # ── Mood Journal ──────────────────────────────────────
 MOOD_JOURNAL_PATH = os.path.join(os.path.dirname(__file__), 'data', 'mood_journal.json')
 
-from ai_service import analyze_journal, predict_relapse, therapy_start, therapy_agent_step, coach_agent_step
+from ai_service import analyze_journal, predict_relapse, coach_agent_step
 import uuid
 
 @app.route('/api/analytics', methods=['POST'])
@@ -1203,71 +1187,6 @@ def log_analytics():
         return jsonify({"status": "logged"}), 201
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
-@app.route('/api/therapy/session', methods=['POST'])
-def create_therapy_session():
-    try:
-        user_id = request.json.get('user_id', 'default_user') if request.json else 'default_user'
-        session_id = str(uuid.uuid4())
-        
-        initial_msg = therapy_start()
-        messages = [{"role": "assistant", "content": initial_msg.get("reply", "Hello. Let's begin.")}]
-        
-        conn = get_db_connection()
-        c = conn.cursor()
-        c.execute('''
-            INSERT INTO therapy_sessions (id, user_id, messages, outcome)
-            VALUES (?, ?, ?, ?)
-        ''', (session_id, user_id, json.dumps(messages), json.dumps({})))
-        conn.commit()
-        conn.close()
-        
-        return jsonify({
-            "session_id": session_id,
-            "messages": messages
-        }), 201
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/therapy/session/<session_id>/respond', methods=['POST'])
-def therapy_respond(session_id):
-    try:
-        user_message = request.json.get('message', '')
-        
-        conn = get_db_connection()
-        c = conn.cursor()
-        c.execute('SELECT messages FROM therapy_sessions WHERE id = ?', (session_id,))
-        row = c.fetchone()
-        if not row:
-            return jsonify({'error': 'Session not found'}), 404
-            
-        messages = json.loads(row['messages']) if row['messages'] else []
-        messages.append({"role": "user", "content": user_message})
-        
-        # Call AI service with chat history
-        agent_reply = therapy_agent_step(session_id, user_message, chat_history=messages[:-1])
-        
-        messages.append({"role": "assistant", "content": agent_reply.get("reply", "")})
-        
-        c.execute('''
-            UPDATE therapy_sessions 
-            SET messages = ?, outcome = ?
-            WHERE id = ?
-        ''', (
-            json.dumps(messages), 
-            json.dumps(agent_reply.get("suggested_commitment", {})),
-            session_id
-        ))
-        conn.commit()
-        conn.close()
-        
-        return jsonify({
-            "messages": messages,
-            "agent_reply": agent_reply.get("reply", ""),
-            "suggested_commitment": agent_reply.get("suggested_commitment", None)
-        }), 200
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/predictions/relapse-risk', methods=['GET'])
 def get_relapse_risk():
@@ -1630,52 +1549,6 @@ def coach_chat_new():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# ── 3. AI Screen Addiction Therapy ──────────────────────
-@app.route('/api/therapy/plan', methods=['GET'])
-def get_therapy_plan():
-    try:
-        conn = get_db_connection()
-        c = conn.cursor()
-        date_str = datetime.now().strftime("%Y-%m-%d")
-        c.execute('''
-            SELECT category, SUM(seconds) as total_sec 
-            FROM usage_logs 
-            WHERE date = ?
-            GROUP BY category 
-            ORDER BY total_sec DESC
-        ''', (date_str,))
-        rows = c.fetchall()
-        conn.close()
-        
-        top_cat = rows[0]['category'] if rows else "General"
-        
-        plan = []
-        if top_cat in ["Social Media", "Social"]:
-            plan = [
-                {"step": 1, "title": "Awareness", "desc": "Notice your urge to open social media. Take a breath first."},
-                {"step": 2, "title": "Delay", "desc": "Wait 5 minutes before checking apps like Instagram or TikTok."},
-                {"step": 3, "title": "Replace", "desc": "Message a friend directly instead of scrolling through feeds."}
-            ]
-        elif top_cat in ["Entertainment", "Video"]:
-            plan = [
-                {"step": 1, "title": "Awareness", "desc": "Acknowledge when you start auto-playing the next video."},
-                {"step": 2, "title": "Delay", "desc": "Pause the video and drink water before continuing."},
-                {"step": 3, "title": "Replace", "desc": "Read a physical book or listen to a podcast instead."}
-            ]
-        else:
-            plan = [
-                {"step": 1, "title": "Awareness", "desc": "Keep track of how often you look at your screen without a specific goal."},
-                {"step": 2, "title": "Delay", "desc": "Stand up and stretch before starting a new digital task."},
-                {"step": 3, "title": "Replace", "desc": "Schedule one hour of completely screen-free time today."}
-            ]
-            
-        return jsonify({
-            "top_category": top_cat,
-            "cbt_plan": plan
-        })
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
 # ── Commitments ─────────────────────────────────────────
 
 import uuid
@@ -1933,40 +1806,106 @@ def get_hourly_usage():
 
 def start_screen_monitor_background():
     try:
-        from monitor.screen_monitor import ScreenMonitor
+        from agent.app_usage_tracker import AppUsageTracker
         import threading
         
         def run_monitor():
-            monitor = ScreenMonitor(poll_interval=5)
-            monitor.run()
+            tracker = AppUsageTracker(user_id='local', poll_seconds=5)
+            tracker.run()
             
         monitor_thread = threading.Thread(target=run_monitor, daemon=True)
         monitor_thread.start()
-        print("Started screen monitor service in background")
+        print("Started app usage tracker service in background")
     except Exception as e:
         print(f"Failed to start screen monitor: {e}")
-
-if __name__ == '__main__':
-    start_screen_monitor_background()
-    app.run(debug=True, port=5000)
-
 
 # ── Weekly Timetable / Planner ────────────────────────────────────────
 
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
+
+
+def ensure_default_timetable(conn, c):
+    # Try to reuse an existing timetable that has no slots yet.
+    c.execute('''
+        SELECT wt.id
+        FROM weekly_timetable wt
+        LEFT JOIN weekly_timetable_slots ws ON ws.timetable_id = wt.id
+        WHERE wt.user_id = ?
+        GROUP BY wt.id
+        HAVING COUNT(ws.id) = 0
+        ORDER BY wt.created_at DESC
+        LIMIT 1
+    ''', ('local',))
+    empty_table = c.fetchone()
+
+    if empty_table:
+        timetable_id = empty_table['id']
+        c.execute(
+            'UPDATE weekly_timetable SET name = ?, timezone = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+            ('Temporary Weekly Plan', 'UTC', timetable_id)
+        )
+    else:
+        c.execute('SELECT COUNT(*) AS cnt FROM weekly_timetable WHERE user_id = ?', ('local',))
+        row = c.fetchone()
+        count = row['cnt'] if row else 0
+        if count > 0:
+            return
+
+        timetable_id = uuid.uuid4().hex[:8]
+        c.execute(
+            'INSERT INTO weekly_timetable (id, user_id, name, timezone) VALUES (?, ?, ?, ?)',
+            (timetable_id, 'local', 'Temporary Weekly Plan', 'UTC')
+        )
+
+    # One practical slot per weekday and a lighter weekend schedule.
+    default_slots = [
+        (0, '09:00', '10:00', 'Deep Work Sprint', 'Focused work block', 'deep_work', 1),
+        (1, '18:00', '18:45', 'Exercise', 'Quick workout and stretch', 'exercise', 0),
+        (2, '20:00', '20:30', 'Reading Session', 'Read or learn new topic', 'study', 0),
+        (3, '09:00', '10:00', 'Project Work', 'Progress on key project', 'deep_work', 1),
+        (4, '17:30', '18:00', 'Weekly Wrap-Up', 'Review wins and pending items', 'chores', 0),
+        (5, '10:00', '11:00', 'Personal Growth', 'Skill-building time', 'study', 0),
+        (6, '19:00', '19:30', 'Plan Next Week', 'Prepare schedule and priorities', 'chores', 0),
+    ]
+
+    for day_of_week, start_time, end_time, title, description, category, focus_mode in default_slots:
+        c.execute(
+            '''
+            INSERT INTO weekly_timetable_slots
+            (id, timetable_id, day_of_week, start_time, end_time, title, description, category, focus_mode)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''',
+            (
+                uuid.uuid4().hex[:8],
+                timetable_id,
+                day_of_week,
+                start_time,
+                end_time,
+                title,
+                description,
+                category,
+                focus_mode,
+            )
+        )
+
+    conn.commit()
 
 @app.route('/api/timetable', methods=['GET'])
 def list_timetables():
     try:
         conn = get_db_connection()
         c = conn.cursor()
+        ensure_default_timetable(conn, c)
         c.execute('SELECT * FROM weekly_timetable WHERE user_id = ?', ('local',))
         tables = [dict(row) for row in c.fetchall()]
         
         for t in tables:
             c.execute('SELECT * FROM weekly_timetable_slots WHERE timetable_id = ? ORDER BY day_of_week, start_time', (t['id'],))
             t['slots'] = [dict(row) for row in c.fetchall()]
+
+        # Keep populated plans first so UI opens with a usable timetable.
+        tables.sort(key=lambda t: len(t.get('slots', [])), reverse=True)
             
         conn.close()
         return jsonify(tables)
@@ -1976,7 +1915,7 @@ def list_timetables():
 @app.route('/api/timetable', methods=['POST'])
 def create_timetable():
     try:
-        data = request.json
+        data = request.json or {}
         t_id = uuid.uuid4().hex[:8]
         conn = get_db_connection()
         c = conn.cursor()
@@ -2275,3 +2214,801 @@ def get_planner_suggestions():
         return jsonify(suggestions)
     except Exception as e:
         return jsonify(error=str(e)), 500
+
+
+# ── Weekly Planning + Daily Execution v2 ─────────────────────────────
+
+VALID_TASK_CATEGORIES = {'Health', 'Study', 'Work', 'Mindfulness', 'Break'}
+VALID_PRIORITIES = {'Low', 'Medium', 'High'}
+VALID_DAILY_STATUS = {'pending', 'completed', 'skipped'}
+
+DAY_NAME_TO_INT = {
+    'Monday': 0,
+    'Tuesday': 1,
+    'Wednesday': 2,
+    'Thursday': 3,
+    'Friday': 4,
+    'Saturday': 5,
+    'Sunday': 6,
+}
+
+DEMO_WEEKLY_PLAN = [
+    {
+        'day_of_week': 'Monday',
+        'tasks': [
+            {'task_title': 'Morning Workout', 'start_time': '06:30', 'end_time': '07:00', 'category': 'Health', 'priority': 'High'},
+            {'task_title': 'Study Machine Learning', 'start_time': '09:00', 'end_time': '11:00', 'category': 'Study', 'priority': 'High'},
+            {'task_title': 'College Classes', 'start_time': '11:30', 'end_time': '15:30', 'category': 'Work', 'priority': 'High'},
+            {'task_title': 'Project Development', 'start_time': '16:30', 'end_time': '18:00', 'category': 'Work', 'priority': 'Medium'},
+            {'task_title': 'Meditation', 'start_time': '21:00', 'end_time': '21:15', 'category': 'Mindfulness', 'priority': 'Medium'},
+        ],
+    },
+    {
+        'day_of_week': 'Tuesday',
+        'tasks': [
+            {'task_title': 'Morning Run', 'start_time': '06:30', 'end_time': '07:00', 'category': 'Health', 'priority': 'High'},
+            {'task_title': 'Deep Work Coding', 'start_time': '09:00', 'end_time': '11:30', 'category': 'Study', 'priority': 'High'},
+            {'task_title': 'College Classes', 'start_time': '11:30', 'end_time': '15:30', 'category': 'Work', 'priority': 'High'},
+            {'task_title': 'Hackathon Preparation', 'start_time': '17:00', 'end_time': '18:30', 'category': 'Study', 'priority': 'High'},
+            {'task_title': 'Reading Book', 'start_time': '21:00', 'end_time': '21:30', 'category': 'Mindfulness', 'priority': 'Low'},
+        ],
+    },
+    {
+        'day_of_week': 'Wednesday',
+        'tasks': [
+            {'task_title': 'Stretching & Yoga', 'start_time': '06:30', 'end_time': '07:00', 'category': 'Health', 'priority': 'Medium'},
+            {'task_title': 'AI Research Study', 'start_time': '09:00', 'end_time': '11:00', 'category': 'Study', 'priority': 'High'},
+            {'task_title': 'College Classes', 'start_time': '11:30', 'end_time': '15:30', 'category': 'Work', 'priority': 'High'},
+            {'task_title': 'Build Project Features', 'start_time': '16:30', 'end_time': '18:30', 'category': 'Work', 'priority': 'High'},
+            {'task_title': 'Evening Walk', 'start_time': '20:30', 'end_time': '21:00', 'category': 'Health', 'priority': 'Low'},
+        ],
+    },
+    {
+        'day_of_week': 'Thursday',
+        'tasks': [
+            {'task_title': 'Morning Jog', 'start_time': '06:30', 'end_time': '07:00', 'category': 'Health', 'priority': 'Medium'},
+            {'task_title': 'Practice Data Structures', 'start_time': '09:00', 'end_time': '11:00', 'category': 'Study', 'priority': 'High'},
+            {'task_title': 'College Classes', 'start_time': '11:30', 'end_time': '15:30', 'category': 'Work', 'priority': 'High'},
+            {'task_title': 'Work on CBT Feature', 'start_time': '16:30', 'end_time': '18:00', 'category': 'Work', 'priority': 'Medium'},
+            {'task_title': 'Meditation', 'start_time': '21:00', 'end_time': '21:15', 'category': 'Mindfulness', 'priority': 'Medium'},
+        ],
+    },
+    {
+        'day_of_week': 'Friday',
+        'tasks': [
+            {'task_title': 'Morning Workout', 'start_time': '06:30', 'end_time': '07:00', 'category': 'Health', 'priority': 'High'},
+            {'task_title': 'AI Model Experiment', 'start_time': '09:00', 'end_time': '11:30', 'category': 'Study', 'priority': 'High'},
+            {'task_title': 'College Classes', 'start_time': '11:30', 'end_time': '15:30', 'category': 'Work', 'priority': 'High'},
+            {'task_title': 'Hackathon Project Work', 'start_time': '16:30', 'end_time': '18:30', 'category': 'Work', 'priority': 'High'},
+            {'task_title': 'Relax & Music', 'start_time': '21:00', 'end_time': '21:30', 'category': 'Break', 'priority': 'Low'},
+        ],
+    },
+    {
+        'day_of_week': 'Saturday',
+        'tasks': [
+            {'task_title': 'Morning Walk', 'start_time': '07:00', 'end_time': '07:30', 'category': 'Health', 'priority': 'Medium'},
+            {'task_title': 'Side Project Development', 'start_time': '10:00', 'end_time': '12:00', 'category': 'Work', 'priority': 'High'},
+            {'task_title': 'Learning New AI Concept', 'start_time': '14:00', 'end_time': '16:00', 'category': 'Study', 'priority': 'Medium'},
+            {'task_title': 'Gym Session', 'start_time': '18:00', 'end_time': '19:00', 'category': 'Health', 'priority': 'High'},
+            {'task_title': 'Movie / Relaxation', 'start_time': '21:00', 'end_time': '23:00', 'category': 'Break', 'priority': 'Low'},
+        ],
+    },
+    {
+        'day_of_week': 'Sunday',
+        'tasks': [
+            {'task_title': 'Late Morning Walk', 'start_time': '08:00', 'end_time': '08:30', 'category': 'Health', 'priority': 'Low'},
+            {'task_title': 'Weekly Review & Planning', 'start_time': '10:00', 'end_time': '11:00', 'category': 'Work', 'priority': 'High'},
+            {'task_title': 'Family / Social Time', 'start_time': '12:00', 'end_time': '14:00', 'category': 'Break', 'priority': 'Medium'},
+            {'task_title': 'Read Personal Development Book', 'start_time': '17:00', 'end_time': '18:00', 'category': 'Mindfulness', 'priority': 'Medium'},
+            {'task_title': 'Prepare Tasks for Next Week', 'start_time': '20:30', 'end_time': '21:00', 'category': 'Work', 'priority': 'Medium'},
+        ],
+    },
+]
+
+
+def _seed_demo_weekly_plan(conn, replace=False):
+    c = conn.cursor()
+    c.execute('SELECT COUNT(*) AS cnt FROM weekly_tasks WHERE user_id = ?', ('local',))
+    existing = c.fetchone()['cnt']
+    if existing > 0 and not replace:
+        return 0
+
+    if replace:
+        c.execute('SELECT id FROM weekly_tasks WHERE user_id = ?', ('local',))
+        task_ids = [row['id'] for row in c.fetchall()]
+        if task_ids:
+            marks = ','.join(['?'] * len(task_ids))
+            c.execute(f'DELETE FROM daily_task_status WHERE task_id IN ({marks})', tuple(task_ids))
+        c.execute('DELETE FROM weekly_tasks WHERE user_id = ?', ('local',))
+
+    inserted = 0
+    for day_bucket in DEMO_WEEKLY_PLAN:
+        day = DAY_NAME_TO_INT.get(day_bucket['day_of_week'])
+        if day is None:
+            continue
+        for idx, task in enumerate(day_bucket['tasks']):
+            c.execute('''
+                INSERT INTO weekly_tasks
+                (id, user_id, day_of_week, task_title, task_description, start_time, end_time, category, priority, sort_order)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                uuid.uuid4().hex[:8],
+                'local',
+                day,
+                task.get('task_title', 'Untitled Task'),
+                task.get('task_description', ''),
+                task.get('start_time', '09:00'),
+                task.get('end_time', '10:00'),
+                task.get('category', 'Work'),
+                task.get('priority', 'Medium'),
+                idx,
+            ))
+            inserted += 1
+
+    conn.commit()
+    return inserted
+
+
+def _clear_weekly_tasks(conn):
+    c = conn.cursor()
+    c.execute('SELECT id FROM weekly_tasks WHERE user_id = ?', ('local',))
+    task_ids = [row['id'] for row in c.fetchall()]
+    if task_ids:
+        marks = ','.join(['?'] * len(task_ids))
+        c.execute(f'DELETE FROM daily_task_status WHERE task_id IN ({marks})', tuple(task_ids))
+    c.execute('DELETE FROM weekly_tasks WHERE user_id = ?', ('local',))
+
+
+def _generate_smart_weekly_plan(conn, replace=True):
+    c = conn.cursor()
+
+    best_hour = 9
+    c.execute('''
+        SELECT CAST(SUBSTR(wt.start_time, 1, 2) AS INTEGER) AS hour_block, COUNT(*) AS completed_count
+        FROM daily_task_status dts
+        JOIN weekly_tasks wt ON wt.id = dts.task_id
+        WHERE dts.status = 'completed'
+        GROUP BY hour_block
+        ORDER BY completed_count DESC
+        LIMIT 1
+    ''')
+    row = c.fetchone()
+    if row and row['hour_block'] is not None:
+        best_hour = int(row['hour_block'])
+
+    stress_day = 2  # Wednesday default
+    c.execute('''
+        SELECT CAST(strftime('%w', SUBSTR(date,1,10)) AS INTEGER) AS weekday, AVG(mood_score) AS avg_mood
+        FROM mood_journal
+        WHERE date IS NOT NULL
+        GROUP BY weekday
+        ORDER BY avg_mood ASC
+        LIMIT 1
+    ''')
+    mood_row = c.fetchone()
+    if mood_row and mood_row['weekday'] is not None:
+        # sqlite: 0=Sun..6=Sat -> convert to python 0=Mon..6=Sun
+        sqlite_day = int(mood_row['weekday'])
+        stress_day = (sqlite_day + 6) % 7
+
+    if replace:
+        _clear_weekly_tasks(conn)
+    else:
+        c.execute('SELECT COUNT(*) AS cnt FROM weekly_tasks WHERE user_id = ?', ('local',))
+        if c.fetchone()['cnt'] > 0:
+            return 0
+
+    def hhmm(h, m=0):
+        return f"{h:02d}:{m:02d}"
+
+    inserted = 0
+    for day in range(7):
+        is_stress_day = day == stress_day
+        morning_start = best_hour
+
+        tasks = [
+            {
+                'task_title': 'Morning Stretch' if not is_stress_day else 'Breathing + Stretch',
+                'task_description': 'Start the day with movement and breath.',
+                'start_time': hhmm(6, 30),
+                'end_time': hhmm(7, 0),
+                'category': 'Health',
+                'priority': 'Medium' if is_stress_day else 'High',
+            },
+            {
+                'task_title': 'Deep Work Sprint',
+                'task_description': 'Focus block aligned to your productive window.',
+                'start_time': hhmm(morning_start, 0),
+                'end_time': hhmm(min(morning_start + 2, 23), 0),
+                'category': 'Study',
+                'priority': 'High',
+            },
+            {
+                'task_title': 'Primary Work Block',
+                'task_description': 'Main execution block for top priorities.',
+                'start_time': hhmm(11, 30),
+                'end_time': hhmm(15, 0),
+                'category': 'Work',
+                'priority': 'High',
+            },
+            {
+                'task_title': 'Mindfulness Reset' if is_stress_day else 'Project Build Session',
+                'task_description': 'Short reset or focused build based on stress trend.',
+                'start_time': hhmm(17, 0),
+                'end_time': hhmm(18, 0),
+                'category': 'Mindfulness' if is_stress_day else 'Work',
+                'priority': 'Medium',
+            },
+            {
+                'task_title': 'Digital Detox Hour',
+                'task_description': 'Offline wind-down to reduce late-night doomscrolling.',
+                'start_time': hhmm(21, 0),
+                'end_time': hhmm(22, 0),
+                'category': 'Break',
+                'priority': 'Low',
+            },
+        ]
+
+        for idx, task in enumerate(tasks):
+            c.execute('''
+                INSERT INTO weekly_tasks
+                (id, user_id, day_of_week, task_title, task_description, start_time, end_time, category, priority, sort_order)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                uuid.uuid4().hex[:8],
+                'local',
+                day,
+                task['task_title'],
+                task['task_description'],
+                task['start_time'],
+                task['end_time'],
+                task['category'],
+                task['priority'],
+                idx,
+            ))
+            inserted += 1
+
+    conn.commit()
+    return inserted
+
+
+def _parse_date_yyyy_mm_dd(date_str):
+    return datetime.strptime(date_str, '%Y-%m-%d').date()
+
+
+def _safe_date_from_query(param_name, default_date):
+    val = request.args.get(param_name)
+    if not val:
+        return default_date
+    return _parse_date_yyyy_mm_dd(val)
+
+
+def _daterange(start_date, end_date):
+    cur = start_date
+    while cur <= end_date:
+        yield cur
+        cur += timedelta(days=1)
+
+
+def _day_metrics(conn, target_date):
+    date_str = target_date.strftime('%Y-%m-%d')
+    dow = target_date.weekday()
+    c = conn.cursor()
+
+    c.execute('SELECT COUNT(*) AS cnt FROM weekly_tasks WHERE user_id = ? AND day_of_week = ?', ('local', dow))
+    planned = c.fetchone()['cnt']
+
+    c.execute('''
+        SELECT COUNT(*) AS cnt
+        FROM daily_task_status dts
+        JOIN weekly_tasks wt ON wt.id = dts.task_id
+        WHERE wt.user_id = ? AND wt.day_of_week = ? AND dts.date = ? AND dts.status = 'completed'
+    ''', ('local', dow, date_str))
+    completed = c.fetchone()['cnt']
+
+    c.execute('''
+        SELECT COUNT(*) AS cnt
+        FROM daily_task_status dts
+        JOIN weekly_tasks wt ON wt.id = dts.task_id
+        WHERE wt.user_id = ? AND wt.day_of_week = ? AND dts.date = ? AND dts.status = 'skipped'
+    ''', ('local', dow, date_str))
+    skipped = c.fetchone()['cnt']
+
+    execution_rate = round((completed / planned) * 100, 1) if planned > 0 else 0.0
+    success = planned > 0 and (completed / planned) >= 0.7
+    return {
+        'date': date_str,
+        'planned': planned,
+        'completed': completed,
+        'skipped': skipped,
+        'execution_rate': execution_rate,
+        'success': success,
+    }
+
+
+def _compute_streak(conn, end_date, days=30):
+    start_date = end_date - timedelta(days=days - 1)
+    day_rows = []
+    for d in _daterange(start_date, end_date):
+        day_rows.append(_day_metrics(conn, d))
+
+    current_streak = 0
+    for row in reversed(day_rows):
+        if row['success']:
+            current_streak += 1
+        else:
+            break
+
+    weekly_success_days = sum(1 for r in day_rows[-7:] if r['success']) if day_rows else 0
+    monthly_success_days = sum(1 for r in day_rows if r['success'])
+
+    return {
+        'current_streak': current_streak,
+        'weekly_success_days': weekly_success_days,
+        'monthly_success_days': monthly_success_days,
+        'threshold_percent': 70,
+        'days': day_rows,
+    }
+
+
+@app.route('/api/weekly-plan/tasks', methods=['GET'])
+def list_weekly_plan_tasks():
+    try:
+        day_of_week = request.args.get('day_of_week')
+        conn = get_db_connection()
+        c = conn.cursor()
+        _seed_demo_weekly_plan(conn, replace=False)
+        if day_of_week is None:
+            c.execute('''
+                SELECT * FROM weekly_tasks
+                WHERE user_id = ?
+                ORDER BY day_of_week ASC, sort_order ASC, start_time ASC
+            ''', ('local',))
+        else:
+            c.execute('''
+                SELECT * FROM weekly_tasks
+                WHERE user_id = ? AND day_of_week = ?
+                ORDER BY sort_order ASC, start_time ASC
+            ''', ('local', int(day_of_week)))
+
+        tasks = [dict(r) for r in c.fetchall()]
+        conn.close()
+        return jsonify(tasks)
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+
+
+@app.route('/api/weekly-plan/seed-demo', methods=['POST'])
+def seed_demo_weekly_plan():
+    try:
+        data = request.json or {}
+        replace = bool(data.get('replace', True))
+        conn = get_db_connection()
+        inserted = _seed_demo_weekly_plan(conn, replace=replace)
+        conn.close()
+        return jsonify(status='seeded', inserted=inserted, replace=replace)
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+
+
+@app.route('/api/weekly-plan/generate-smart', methods=['POST'])
+def generate_smart_weekly_plan():
+    try:
+        data = request.json or {}
+        replace = bool(data.get('replace', True))
+        conn = get_db_connection()
+        inserted = _generate_smart_weekly_plan(conn, replace=replace)
+        conn.close()
+        return jsonify(status='generated', inserted=inserted, replace=replace)
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+
+
+@app.route('/api/planner/habit-recommendations', methods=['GET'])
+def get_habit_recommendations():
+    try:
+        conn = get_db_connection()
+        c = conn.cursor()
+
+        c.execute('SELECT AVG(seconds) AS avg_seconds FROM usage_logs')
+        row = c.fetchone()
+        avg_screen_hours = round((float(row['avg_seconds']) / 3600.0), 2) if row and row['avg_seconds'] is not None else 0.0
+
+        c.execute('SELECT AVG(mood_score) AS avg_mood FROM mood_journal')
+        mood_row = c.fetchone()
+        avg_mood = round(float(mood_row['avg_mood']), 2) if mood_row and mood_row['avg_mood'] is not None else 3.5
+
+        c.execute('''
+            SELECT COUNT(*) AS skipped
+            FROM daily_task_status
+            WHERE status = 'skipped' AND date >= date('now', '-14 day')
+        ''')
+        skip_row = c.fetchone()
+        skipped_recent = int(skip_row['skipped']) if skip_row else 0
+
+        cards = []
+        if avg_screen_hours > 5:
+            cards.append({'title': 'Outdoor Walk', 'duration_minutes': 20, 'category': 'Health', 'reason': 'Screen time is high. Short outdoor movement improves recovery.'})
+            cards.append({'title': 'Digital Detox Hour', 'duration_minutes': 60, 'category': 'Break', 'reason': 'Frequent late usage detected. Add an offline block in the evening.'})
+        if avg_mood < 3:
+            cards.append({'title': 'Breathing Exercise', 'duration_minutes': 5, 'category': 'Mindfulness', 'reason': 'Mood trend shows stress. Add a short regulation break.'})
+            cards.append({'title': 'Evening Reflection', 'duration_minutes': 10, 'category': 'Mindfulness', 'reason': 'Journaling can stabilize mood and improve follow-through.'})
+        if skipped_recent >= 5:
+            cards.append({'title': 'Focus Sprint', 'duration_minutes': 25, 'category': 'Study', 'reason': 'Recent skipped tasks detected. Start with short, high-success focus blocks.'})
+
+        if not cards:
+            cards = [
+                {'title': 'Morning Stretch', 'duration_minutes': 15, 'category': 'Health', 'reason': 'Build a reliable anchor habit each morning.'},
+                {'title': 'Deep Work Block', 'duration_minutes': 90, 'category': 'Work', 'reason': 'Keep one protected high-value work block daily.'},
+                {'title': 'Evening Reflection', 'duration_minutes': 10, 'category': 'Mindfulness', 'reason': 'Review wins and reset next-day priorities.'},
+            ]
+
+        conn.close()
+        return jsonify(
+            avg_screen_time_hours=avg_screen_hours,
+            avg_mood=avg_mood,
+            skipped_recent=skipped_recent,
+            cards=cards,
+        )
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+
+
+@app.route('/api/weekly-plan/tasks', methods=['POST'])
+def create_weekly_plan_task():
+    try:
+        data = request.json or {}
+        day_of_week = int(data.get('day_of_week', 0))
+        category = data.get('category', 'Work')
+        priority = data.get('priority', 'Medium')
+
+        if category not in VALID_TASK_CATEGORIES:
+            category = 'Work'
+        if priority not in VALID_PRIORITIES:
+            priority = 'Medium'
+
+        conn = get_db_connection()
+        c = conn.cursor()
+
+        if 'sort_order' in data and data.get('sort_order') is not None:
+            sort_order = int(data.get('sort_order'))
+        else:
+            c.execute('SELECT COALESCE(MAX(sort_order), -1) + 1 AS next_order FROM weekly_tasks WHERE user_id = ? AND day_of_week = ?', ('local', day_of_week))
+            sort_order = c.fetchone()['next_order']
+
+        task_id = uuid.uuid4().hex[:8]
+        c.execute('''
+            INSERT INTO weekly_tasks
+            (id, user_id, day_of_week, task_title, task_description, start_time, end_time, category, priority, sort_order)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            task_id,
+            'local',
+            day_of_week,
+            data.get('task_title', 'Untitled Task'),
+            data.get('task_description', ''),
+            data.get('start_time', '09:00'),
+            data.get('end_time', '10:00'),
+            category,
+            priority,
+            sort_order,
+        ))
+        conn.commit()
+        conn.close()
+        return jsonify(id=task_id, status='created')
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+
+
+@app.route('/api/weekly-plan/tasks/<task_id>', methods=['PUT', 'DELETE'])
+def modify_weekly_plan_task(task_id):
+    try:
+        conn = get_db_connection()
+        c = conn.cursor()
+        if request.method == 'DELETE':
+            c.execute('DELETE FROM daily_task_status WHERE task_id = ?', (task_id,))
+            c.execute('DELETE FROM weekly_tasks WHERE id = ? AND user_id = ?', (task_id, 'local'))
+            conn.commit()
+            conn.close()
+            return jsonify(status='deleted')
+
+        data = request.json or {}
+        category = data.get('category')
+        if category not in VALID_TASK_CATEGORIES:
+            category = 'Work'
+        priority = data.get('priority')
+        if priority not in VALID_PRIORITIES:
+            priority = 'Medium'
+
+        c.execute('''
+            UPDATE weekly_tasks
+            SET day_of_week = ?,
+                task_title = ?,
+                task_description = ?,
+                start_time = ?,
+                end_time = ?,
+                category = ?,
+                priority = ?,
+                sort_order = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND user_id = ?
+        ''', (
+            int(data.get('day_of_week', 0)),
+            data.get('task_title', 'Untitled Task'),
+            data.get('task_description', ''),
+            data.get('start_time', '09:00'),
+            data.get('end_time', '10:00'),
+            category,
+            priority,
+            int(data.get('sort_order', 0)),
+            task_id,
+            'local',
+        ))
+        conn.commit()
+        conn.close()
+        return jsonify(status='updated')
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+
+
+@app.route('/api/weekly-plan/tasks/reorder', methods=['POST'])
+def reorder_weekly_plan_tasks():
+    try:
+        data = request.json or {}
+        task_ids = data.get('task_ids', [])
+        if not isinstance(task_ids, list):
+            return jsonify(error='task_ids must be an array'), 400
+
+        conn = get_db_connection()
+        c = conn.cursor()
+        for idx, task_id in enumerate(task_ids):
+            c.execute('UPDATE weekly_tasks SET sort_order = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?', (idx, task_id, 'local'))
+        conn.commit()
+        conn.close()
+        return jsonify(status='reordered')
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+
+
+@app.route('/api/daily-plan', methods=['GET'])
+def get_daily_plan_v2():
+    try:
+        target_date = _safe_date_from_query('date', datetime.utcnow().date())
+        date_str = target_date.strftime('%Y-%m-%d')
+        day_of_week = target_date.weekday()
+
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute('''
+            SELECT wt.*, COALESCE(dts.status, 'pending') AS status
+            FROM weekly_tasks wt
+            LEFT JOIN daily_task_status dts
+              ON dts.task_id = wt.id AND dts.date = ?
+            WHERE wt.user_id = ? AND wt.day_of_week = ?
+            ORDER BY wt.sort_order ASC, wt.start_time ASC
+        ''', (date_str, 'local', day_of_week))
+        tasks = [dict(r) for r in c.fetchall()]
+
+        completed = len([t for t in tasks if t['status'] == 'completed'])
+        skipped = len([t for t in tasks if t['status'] == 'skipped'])
+        pending = len([t for t in tasks if t['status'] == 'pending'])
+        execution_rate = round((completed / len(tasks)) * 100, 1) if tasks else 0.0
+
+        conn.close()
+        return jsonify(
+            date=date_str,
+            day_of_week=day_of_week,
+            tasks=tasks,
+            summary={
+                'planned': len(tasks),
+                'completed': completed,
+                'skipped': skipped,
+                'pending': pending,
+                'execution_rate': execution_rate,
+            }
+        )
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+
+
+@app.route('/api/daily-plan/status', methods=['POST'])
+def set_daily_plan_status():
+    try:
+        data = request.json or {}
+        task_id = data.get('task_id')
+        if not task_id:
+            return jsonify(error='task_id is required'), 400
+
+        status = data.get('status', 'pending')
+        if status not in VALID_DAILY_STATUS:
+            return jsonify(error='invalid status'), 400
+
+        target_date = data.get('date') or datetime.utcnow().strftime('%Y-%m-%d')
+        _parse_date_yyyy_mm_dd(target_date)
+
+        conn = get_db_connection()
+        c = conn.cursor()
+        row_id = uuid.uuid4().hex[:8]
+        c.execute('''
+            INSERT INTO daily_task_status (id, task_id, date, status)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(task_id, date)
+            DO UPDATE SET status = excluded.status, updated_at = CURRENT_TIMESTAMP
+        ''', (row_id, task_id, target_date, status))
+
+        conn.commit()
+        conn.close()
+        return jsonify(status='updated', task_id=task_id, date=target_date, task_status=status)
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+
+
+@app.route('/api/daily-plan/move-task', methods=['POST'])
+def move_task_to_another_day():
+    try:
+        data = request.json or {}
+        task_id = data.get('task_id')
+        new_day_of_week = data.get('new_day_of_week')
+        if task_id is None or new_day_of_week is None:
+            return jsonify(error='task_id and new_day_of_week are required'), 400
+
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute('''
+            UPDATE weekly_tasks
+            SET day_of_week = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND user_id = ?
+        ''', (int(new_day_of_week), task_id, 'local'))
+        conn.commit()
+        conn.close()
+        return jsonify(status='moved')
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+
+
+@app.route('/api/planner/streak', methods=['GET'])
+def get_planner_streak_v2():
+    try:
+        days = int(request.args.get('days', 30))
+        days = max(1, min(days, 120))
+        end_date = _safe_date_from_query('end_date', datetime.utcnow().date())
+
+        conn = get_db_connection()
+        streak = _compute_streak(conn, end_date, days)
+        conn.close()
+        return jsonify(streak)
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+
+
+@app.route('/api/planner/analysis', methods=['GET'])
+def get_planner_analysis_v2():
+    try:
+        end_date = _safe_date_from_query('end_date', datetime.utcnow().date())
+        start_date = _safe_date_from_query('start_date', end_date - timedelta(days=6))
+        if start_date > end_date:
+            start_date, end_date = end_date, start_date
+
+        conn = get_db_connection()
+        c = conn.cursor()
+
+        day_breakdown = [_day_metrics(conn, d) for d in _daterange(start_date, end_date)]
+
+        c.execute('''
+            SELECT wt.task_title, COUNT(*) AS skip_count
+            FROM daily_task_status dts
+            JOIN weekly_tasks wt ON wt.id = dts.task_id
+            WHERE dts.status = 'skipped' AND dts.date BETWEEN ? AND ?
+            GROUP BY wt.id, wt.task_title
+            ORDER BY skip_count DESC
+            LIMIT 5
+        ''', (start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')))
+        skipped_tasks = [dict(r) for r in c.fetchall()]
+
+        c.execute('''
+            SELECT SUBSTR(wt.start_time, 1, 2) AS hour_block, COUNT(*) AS completed_count
+            FROM daily_task_status dts
+            JOIN weekly_tasks wt ON wt.id = dts.task_id
+            WHERE dts.status = 'completed' AND dts.date BETWEEN ? AND ?
+            GROUP BY hour_block
+            ORDER BY completed_count DESC
+            LIMIT 1
+        ''', (start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')))
+        productive_row = c.fetchone()
+        most_productive_window = None
+        if productive_row and productive_row['hour_block']:
+            h = int(productive_row['hour_block'])
+            most_productive_window = f"{h:02d}:00-{(h+1)%24:02d}:00"
+
+        c.execute('''
+            SELECT AVG(mood_score) AS avg_mood
+            FROM mood_journal
+            WHERE SUBSTR(date, 1, 10) BETWEEN ? AND ?
+        ''', (start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')))
+        mood_row = c.fetchone()
+        avg_mood = round(float(mood_row['avg_mood']), 2) if mood_row and mood_row['avg_mood'] is not None else None
+
+        c.execute('''
+            SELECT AVG(seconds) AS avg_seconds
+            FROM usage_logs
+            WHERE date BETWEEN ? AND ?
+        ''', (start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')))
+        usage_row = c.fetchone()
+        avg_screen_hours = round((float(usage_row['avg_seconds']) / 3600.0), 2) if usage_row and usage_row['avg_seconds'] is not None else None
+
+        c.execute('''
+            SELECT COUNT(*) AS therapy_sessions
+            FROM therapy_sessions
+            WHERE DATE(started_at) BETWEEN ? AND ?
+        ''', (start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')))
+        therapy_row = c.fetchone()
+        therapy_sessions = therapy_row['therapy_sessions'] if therapy_row else 0
+
+        planned_total = sum(d['planned'] for d in day_breakdown)
+        completed_total = sum(d['completed'] for d in day_breakdown)
+        execution_rate = round((completed_total / planned_total) * 100, 1) if planned_total > 0 else 0.0
+
+        suggestions = []
+        if planned_total > 0 and completed_total < (planned_total * 0.6):
+            suggestions.append('You planned too many tasks versus completions. Try reducing daily planned load by 20-30%.')
+        if avg_screen_hours is not None and avg_screen_hours > 4:
+            suggestions.append('Your productivity tends to drop with higher screen time. Add an offline break before evening tasks.')
+        if most_productive_window:
+            suggestions.append(f'You complete most tasks around {most_productive_window}. Schedule deep work in that window.')
+        if avg_mood is not None and avg_mood < 3:
+            suggestions.append('Mood scores are low this week. Add mindfulness and recovery tasks in your weekly plan.')
+        if therapy_sessions > 0:
+            suggestions.append('Therapy engagement is active. Convert CBT micro-actions into short daily tasks for better follow-through.')
+
+        if not suggestions:
+            suggestions.append('Great consistency. Keep your current plan and increase one high-priority task next week.')
+
+        conn.close()
+        return jsonify(
+            start_date=start_date.strftime('%Y-%m-%d'),
+            end_date=end_date.strftime('%Y-%m-%d'),
+            plan_vs_reality={
+                'planned': planned_total,
+                'completed': completed_total,
+                'execution_rate': execution_rate,
+            },
+            day_breakdown=day_breakdown,
+            skipped_tasks=skipped_tasks,
+            most_productive_window=most_productive_window,
+            avg_mood=avg_mood,
+            avg_screen_time_hours=avg_screen_hours,
+            therapy_sessions=therapy_sessions,
+            suggestions=suggestions,
+        )
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+
+
+@app.route('/api/planner/dashboard', methods=['GET'])
+def get_planner_dashboard_v2():
+    try:
+        target_date = _safe_date_from_query('date', datetime.utcnow().date())
+        conn = get_db_connection()
+        today_metrics = _day_metrics(conn, target_date)
+        streak = _compute_streak(conn, target_date, 30)
+
+        week_start = target_date - timedelta(days=target_date.weekday())
+        week_days = [_day_metrics(conn, week_start + timedelta(days=i)) for i in range(7)]
+
+        conn.close()
+        return jsonify(
+            today=today_metrics,
+            weekly_completion=week_days,
+            streak={
+                'current_streak': streak['current_streak'],
+                'weekly_success_days': streak['weekly_success_days'],
+                'monthly_success_days': streak['monthly_success_days'],
+            }
+        )
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+
+
+if __name__ == '__main__':
+    start_screen_monitor_background()
+    app.run(debug=True, port=5000)

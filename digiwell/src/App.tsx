@@ -12,10 +12,7 @@ import FocusMode from './pages/FocusMode';
 import Reports from './pages/Reports';
 import Coach from './pages/Coach';
 import MoodJournal from './pages/MoodJournal';
-import DetoxChallenge from './pages/DetoxChallenge.jsx';
-import Therapy from './pages/Therapy.jsx';
-import WeeklyTimetable from './pages/WeeklyTimetable.jsx';
-import DailyTasks from './pages/DailyTasks.jsx';
+import TimeDashboard from './pages/TimeDashboard.jsx';
 import InterventionPopup from './components/ui/InterventionPopup.jsx';
 import use2020Timer from './hooks/use2020Timer.js'; // Feature 4 hook
 import useDopamineDetector from './hooks/useDopamineDetector'; // Feature 1 hook
@@ -43,10 +40,7 @@ function AppContent() {
             <Route path="/reports" element={<Reports />} />
             <Route path="/coach" element={<Coach />} />
             <Route path="/journal" element={<MoodJournal />} />
-            <Route path="/detox" element={<DetoxChallenge />} />
-            <Route path="/therapy" element={<Therapy />} />
-            <Route path="/timetable" element={<WeeklyTimetable />} />
-            <Route path="/daily-tasks" element={<DailyTasks />} />
+            <Route path="/detox" element={<TimeDashboard />} />
           </Routes>
         </main>
       </div>

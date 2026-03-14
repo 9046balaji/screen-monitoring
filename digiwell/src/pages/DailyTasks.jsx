@@ -3,8 +3,8 @@ import { getDailyTasks, startDailyTask, completeDailyTask, skipDailyTask, getPla
 import { CheckSquare, Play, FastForward, Square, ListTodo, Activity } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-export default function DailyTasks() {
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+export default function DailyTasks({ initialDate }) {
+  const [date, setDate] = useState(initialDate || new Date().toISOString().split('T')[0]);
   const [tasks, setTasks] = useState([]);
   const [adherence, setAdherence] = useState(null);
 

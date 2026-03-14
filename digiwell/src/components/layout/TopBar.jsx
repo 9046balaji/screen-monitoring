@@ -8,7 +8,7 @@ export default function TopBar() {
   const isProfile = location.pathname === '/profile';
   const isReports = location.pathname === '/reports';
 
-  const isWellness = ['/wellness', '/journal', '/therapy'].includes(location.pathname);
+  const isWellness = ['/wellness', '/journal'].includes(location.pathname);
   const isAnalyticsGroup = ['/analytics', '/predictions'].includes(location.pathname);
 
   // Theme support
@@ -34,7 +34,8 @@ export default function TopBar() {
       case '/profile': return 'Profile';
       case '/wellness': return 'Wellness';
       case '/journal': return 'Mood Journal';
-      case '/therapy': return 'CBT Therapy';
+      case '/weekly-plan': return 'Weekly Planner';
+      case '/daily-plan': return 'Daily Plan';
       case '/detox': return '7-Day Detox';
       case '/coach': return 'AI Coach';
       case '/tracker': return 'App Tracker';
@@ -65,7 +66,6 @@ export default function TopBar() {
             <>
               <NavLink to="/wellness" className={({ isActive }) => navLinkClass(isActive)}>Wellness Tips</NavLink>
               <NavLink to="/journal" className={({ isActive }) => navLinkClass(isActive)}>Mood Journal</NavLink>
-              <NavLink to="/therapy" className={({ isActive }) => navLinkClass(isActive)}>CBT Therapy</NavLink>
             </>
           ) : isAnalyticsGroup ? (
             <>

@@ -1,7 +1,7 @@
 import axios from 'axios'
 import * as mock from '../data/mockData'
 
-const USE_MOCK = import.meta.env.VITE_USE_MOCK !== 'false'
+const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true'
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api'
 
 export const predictUsageCategory = async (userData) => {
@@ -37,7 +37,7 @@ export const getRecommendations = async (persona, risk) => {
 export const getWeeklyAnalytics = async () => {
   if (USE_MOCK) return mock.weeklyTrend
   const res = await axios.get(`${BASE_URL}/analytics/weekly`)
-  return res.data
+  return Array.isArray(res.data) ? res.data : (res.data?.timeline || [])
 }
 
 export const predictProductivity = async (userData) => {
@@ -109,28 +109,6 @@ export const chatWithLifeCoach = async (message, history = []) => {
       }
     }
     const res = await axios.post(`${BASE_URL}/coach/chat`, { message, history })
-}
-
-// ── AI Screen Addiction Therapy (CBT) ──
-export const startTherapySession = async () => {
-  if (USE_MOCK) return { session_id: "mock-123", messages: [{role: "assistant", content: "Hi! How can I help you today?"}] };
-  const res = await axios.post(`${BASE_URL}/therapy/session`);
-  return res.data;
-}
-
-export const respondTherapySession = async (sessionId, message) => {
-  if (USE_MOCK) return { 
-    messages: [], 
-    agent_reply: "Let's take a quick break.", 
-    suggested_commitment: { title: "Short Break", duration_minutes: 15 } 
-  };
-  const res = await axios.post(`${BASE_URL}/therapy/session/${sessionId}/respond`, { message });
-  return res.data;
-}
-
-export const getTherapyPlan = async () => {
-  const res = await axios.get(`${BASE_URL}/therapy/plan`)
-  return res.data
 }
 
 // ── Reports ──
@@ -294,8 +272,72 @@ export const getAddictionHeatmap = async () => {
     }
     return dummy;
   }
-  const res = await axios.get(`${BASE_URL}/addiction-heatmap`);
+  const res = await axios.get(`${BASE_URL}/analytics/heatmap`);
   return res.data;
+}
+
+export const getAnalyticsDaily = async () => {
+  if (USE_MOCK) {
+    return {
+      date: new Date().toISOString().slice(0, 10),
+      apps: [],
+      summary: {
+        total_minutes: 0,
+        total_hours: 0,
+        productive_minutes: 0,
+        distracting_minutes: 0,
+        productivity_ratio: 0,
+        top_apps: []
+      },
+      battery: { available: false }
+    }
+  }
+  const res = await axios.get(`${BASE_URL}/analytics/daily`)
+  return res.data
+}
+
+export const getAnalyticsWeekly = async () => {
+  if (USE_MOCK) {
+    return { start_date: '', end_date: '', timeline: [], by_day: [] }
+  }
+  const res = await axios.get(`${BASE_URL}/analytics/weekly`)
+  return res.data
+}
+
+export const getAnalyticsHeatmap = async () => {
+  if (USE_MOCK) return getAddictionHeatmap()
+  const res = await axios.get(`${BASE_URL}/analytics/heatmap`)
+  return res.data
+}
+
+export const getAnalyticsTopApps = async () => {
+  if (USE_MOCK) return []
+  const res = await axios.get(`${BASE_URL}/analytics/top-apps`)
+  return res.data
+}
+
+export const getAnalyticsInsights = async () => {
+  if (USE_MOCK) return { insights: [] }
+  const res = await axios.get(`${BASE_URL}/analytics/ai-insights`)
+  return res.data
+}
+
+export const getWeeklyAppUsageReport = async () => {
+  if (USE_MOCK) {
+    return {
+      total_screen_time: 0,
+      total_screen_time_hours: 0,
+      average_daily_usage: 0,
+      average_daily_usage_hours: 0,
+      apps: [],
+      categories: [],
+      top_apps: [],
+      insights: [],
+      daily_series: [],
+    }
+  }
+  const res = await axios.get(`${BASE_URL}/analytics/weekly-app-usage`)
+  return res.data
 }
 
 // ── Commitments API ───────────────────────────────────────
@@ -303,8 +345,8 @@ export const getAddictionHeatmap = async () => {
 export const startCommitment = async (payload) => {
   if (USE_MOCK) {
     return {
-      commitment_id: "mock-123",
-      status: "active",
+      commitment_id: 'mock-123',
+      status: 'active',
       start_ts: new Date().toISOString(),
       expected_end_ts: new Date(Date.now() + payload.expected_duration_minutes * 60000).toISOString(),
       focus_session_created: payload.auto_start_focus
@@ -335,29 +377,27 @@ export const completeCommitment = async (id) => {
   return res.json();
 }
 
-
 export const getDailyUsage = async () => {
-  const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
-  const res = await axios.get(`${BASE_URL}/usage/daily`);
+  const URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+  const res = await axios.get(`${URL}/usage/daily`);
   return res.data;
 }
 
 export const getHourlyUsage = async () => {
-  const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
-  const res = await axios.get(`${BASE_URL}/usage/hourly`);
+  const URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+  const res = await axios.get(`${URL}/usage/hourly`);
   return res.data;
 }
-
 
 // ── PLANNER & WEEKLY TIMETABLE ──────────────────────────
 
 export const getTimetables = async () => {
-  const res = await fetch(${API_BASE}/api/timetable);
+  const res = await fetch(`${BASE_URL}/timetable`);
   return res.json();
 };
 
 export const createTimetable = async (data) => {
-  const res = await fetch(${API_BASE}/api/timetable, {
+  const res = await fetch(`${BASE_URL}/timetable`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -366,7 +406,7 @@ export const createTimetable = async (data) => {
 };
 
 export const updateTimetable = async (id, data) => {
-  const res = await fetch(${API_BASE}/api/timetable/, {
+  const res = await fetch(`${BASE_URL}/timetable/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -375,12 +415,12 @@ export const updateTimetable = async (id, data) => {
 };
 
 export const deleteTimetable = async (id) => {
-  const res = await fetch(${API_BASE}/api/timetable/, { method: 'DELETE' });
+  const res = await fetch(`${BASE_URL}/timetable/${id}`, { method: 'DELETE' });
   return res.json();
 };
 
 export const createTimetableSlot = async (timetableId, data) => {
-  const res = await fetch(${API_BASE}/api/timetable//slot, {
+  const res = await fetch(`${BASE_URL}/timetable/${timetableId}/slot`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -389,7 +429,7 @@ export const createTimetableSlot = async (timetableId, data) => {
 };
 
 export const updateTimetableSlot = async (slotId, data) => {
-  const res = await fetch(${API_BASE}/api/timetable/slot/, {
+  const res = await fetch(`${BASE_URL}/timetable/slot/${slotId}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -398,22 +438,22 @@ export const updateTimetableSlot = async (slotId, data) => {
 };
 
 export const deleteTimetableSlot = async (slotId) => {
-  const res = await fetch(${API_BASE}/api/timetable/slot/, { method: 'DELETE' });
+  const res = await fetch(`${BASE_URL}/timetable/slot/${slotId}`, { method: 'DELETE' });
   return res.json();
 };
 
 export const generateDailyTasks = async (timetableId, date) => {
-  const res = await fetch(${API_BASE}/api/timetable//generate-daily?date=, { method: 'POST' });
+  const res = await fetch(`${BASE_URL}/timetable/${timetableId}/generate-daily?date=${date}`, { method: 'POST' });
   return res.json();
 };
 
 export const getDailyTasks = async (date) => {
-  const res = await fetch(${API_BASE}/api/dailytasks?date=);
+  const res = await fetch(`${BASE_URL}/dailytasks?date=${date}`);
   return res.json();
 };
 
 export const updateDailyTask = async (taskId, data) => {
-  const res = await fetch(${API_BASE}/api/dailytasks/, {
+  const res = await fetch(`${BASE_URL}/dailytasks/${taskId}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -422,27 +462,134 @@ export const updateDailyTask = async (taskId, data) => {
 };
 
 export const startDailyTask = async (taskId) => {
-  const res = await fetch(${API_BASE}/api/dailytasks//start, { method: 'POST' });
+  const res = await fetch(`${BASE_URL}/dailytasks/${taskId}/start`, { method: 'POST' });
   return res.json();
 };
 
 export const completeDailyTask = async (taskId) => {
-  const res = await fetch(${API_BASE}/api/dailytasks//complete, { method: 'POST' });
+  const res = await fetch(`${BASE_URL}/dailytasks/${taskId}/complete`, { method: 'POST' });
   return res.json();
 };
 
 export const skipDailyTask = async (taskId) => {
-  const res = await fetch(${API_BASE}/api/dailytasks//skip, { method: 'POST' });
+  const res = await fetch(`${BASE_URL}/dailytasks/${taskId}/skip`, { method: 'POST' });
   return res.json();
 };
 
 export const getPlannerAdherence = async (date) => {
-  const res = await fetch(${API_BASE}/api/planner/adherence?date=, { method: 'POST' });
+  const res = await fetch(`${BASE_URL}/planner/adherence?date=${date}`, { method: 'POST' });
   return res.json();
 };
 
 export const getPlannerSuggestions = async (date) => {
-  const res = await fetch(${API_BASE}/api/planner/suggestions?date=);
+  const res = await fetch(`${BASE_URL}/planner/suggestions?date=${date}`);
   return res.json();
 };
 
+// ── Weekly Plan v2 ─────────────────────────────────────
+
+export const getWeeklyPlanTasks = async (dayOfWeek = null) => {
+  const suffix = dayOfWeek === null || dayOfWeek === undefined ? '' : `?day_of_week=${dayOfWeek}`;
+  const res = await fetch(`${BASE_URL}/weekly-plan/tasks${suffix}`);
+  return res.json();
+};
+
+export const seedDemoWeeklyPlan = async (replace = true) => {
+  const res = await fetch(`${BASE_URL}/weekly-plan/seed-demo`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ replace }),
+  });
+  return res.json();
+};
+
+export const generateSmartWeeklyPlan = async (replace = true) => {
+  const res = await fetch(`${BASE_URL}/weekly-plan/generate-smart`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ replace }),
+  });
+  return res.json();
+};
+
+export const getHabitRecommendations = async () => {
+  const res = await fetch(`${BASE_URL}/planner/habit-recommendations`);
+  return res.json();
+};
+
+export const createWeeklyPlanTask = async (payload) => {
+  const res = await fetch(`${BASE_URL}/weekly-plan/tasks`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return res.json();
+};
+
+export const updateWeeklyPlanTask = async (taskId, payload) => {
+  const res = await fetch(`${BASE_URL}/weekly-plan/tasks/${taskId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return res.json();
+};
+
+export const deleteWeeklyPlanTask = async (taskId) => {
+  const res = await fetch(`${BASE_URL}/weekly-plan/tasks/${taskId}`, { method: 'DELETE' });
+  return res.json();
+};
+
+export const reorderWeeklyPlanTasks = async (dayOfWeek, taskIds) => {
+  const res = await fetch(`${BASE_URL}/weekly-plan/tasks/reorder`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ day_of_week: dayOfWeek, task_ids: taskIds }),
+  });
+  return res.json();
+};
+
+// ── Daily Plan v2 ──────────────────────────────────────
+
+export const getDailyPlan = async (date) => {
+  const res = await fetch(`${BASE_URL}/daily-plan?date=${date}`);
+  return res.json();
+};
+
+export const setDailyPlanTaskStatus = async ({ task_id, date, status }) => {
+  const res = await fetch(`${BASE_URL}/daily-plan/status`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ task_id, date, status }),
+  });
+  return res.json();
+};
+
+export const moveDailyPlanTask = async ({ task_id, new_day_of_week }) => {
+  const res = await fetch(`${BASE_URL}/daily-plan/move-task`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ task_id, new_day_of_week }),
+  });
+  return res.json();
+};
+
+// ── Planner Insights v2 ────────────────────────────────
+
+export const getPlannerStreak = async (days = 30) => {
+  const res = await fetch(`${BASE_URL}/planner/streak?days=${days}`);
+  return res.json();
+};
+
+export const getPlannerAnalysis = async ({ startDate, endDate }) => {
+  const params = new URLSearchParams();
+  if (startDate) params.set('start_date', startDate);
+  if (endDate) params.set('end_date', endDate);
+  const res = await fetch(`${BASE_URL}/planner/analysis?${params.toString()}`);
+  return res.json();
+};
+
+export const getPlannerDashboard = async (date) => {
+  const res = await fetch(`${BASE_URL}/planner/dashboard?date=${date}`);
+  return res.json();
+};
