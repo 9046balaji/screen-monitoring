@@ -2,7 +2,10 @@ import sqlite3
 import os
 import sys
 
-DB_PATH = os.path.join(os.path.dirname(__file__), 'data', 'digiwell.db')
+if os.environ.get('VERCEL') == '1':
+    DB_PATH = '/tmp/digiwell.db'
+else:
+    DB_PATH = os.path.join(os.path.dirname(__file__), 'data', 'digiwell.db')
 
 def get_db_connection():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
