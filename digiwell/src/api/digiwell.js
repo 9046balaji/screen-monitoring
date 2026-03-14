@@ -1,8 +1,12 @@
 import axios from 'axios'
 import * as mock from '../data/mockData'
 
-const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true'
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api'
+const RAW_API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').trim()
+const NORMALIZED_API_BASE_URL = RAW_API_BASE_URL.replace(/\/+$/, '')
+const DEFAULT_DEV_API_BASE_URL = 'http://localhost:5000/api'
+// In production, default to mock mode when no API URL is provided.
+const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true' || (!NORMALIZED_API_BASE_URL && import.meta.env.PROD)
+const BASE_URL = NORMALIZED_API_BASE_URL || (import.meta.env.DEV ? DEFAULT_DEV_API_BASE_URL : '/api')
 
 export const predictUsageCategory = async (userData) => {
   if (USE_MOCK) return { prediction: "Excessive", confidence: 0.89, model_used: "RandomForest" }
@@ -109,6 +113,7 @@ export const chatWithLifeCoach = async (message, history = []) => {
       }
     }
     const res = await axios.post(`${BASE_URL}/coach/chat`, { message, history })
+    return res.data
 }
 
 // ── Reports ──
@@ -416,14 +421,22 @@ export const completeCommitment = async (id) => {
 }
 
 export const getDailyUsage = async () => {
-  const URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
-  const res = await axios.get(`${URL}/usage/daily`);
+  if (USE_MOCK) {
+    return {
+      total_screen_time_seconds: 0,
+      social_media_time_seconds: 0,
+      productivity_time_seconds: 0,
+      focus_sessions_count: 0,
+      top_apps: [],
+    }
+  }
+  const res = await axios.get(`${BASE_URL}/usage/daily`);
   return res.data;
 }
 
 export const getHourlyUsage = async () => {
-  const URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
-  const res = await axios.get(`${URL}/usage/hourly`);
+  if (USE_MOCK) return []
+  const res = await axios.get(`${BASE_URL}/usage/hourly`);
   return res.data;
 }
 

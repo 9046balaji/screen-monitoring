@@ -163,6 +163,32 @@ docker build -t digiwell-backend .
 docker run --rm -p 5000:5000 digiwell-backend
 ```
 
+## Vercel Deployment (Frontend)
+
+The React frontend in `digiwell/` is Vercel-ready.
+
+Important:
+- The Flask backend in this repo is not a good fit for Vercel serverless in its current form (local SQLite writes, long-lived trackers, desktop hooks).
+- Deploy backend separately (Render, Railway, Fly.io, Azure App Service, etc.) and point frontend to that API.
+
+### Required frontend config
+
+- `digiwell/vercel.json` is included for Vite build settings and SPA rewrites.
+- Set `VITE_API_BASE_URL` to your deployed backend URL with `/api` suffix.
+- Set `VITE_USE_MOCK=false` for real backend mode.
+
+### Deploy commands (CLI)
+
+```powershell
+cd digiwell
+npm install
+npm i -g vercel
+vercel
+vercel --prod
+```
+
+When using Vercel dashboard, set **Root Directory** to `digiwell`.
+
 ## Browser Extension (Optional)
 
 Path: `browser_extension/`
