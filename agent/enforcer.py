@@ -174,6 +174,30 @@ def check_doomscrolling(app_name, category, seconds_used):
                 pass
 
 
+def get_active_window_text():
+    import sys
+    if sys.platform == "win32":
+        try:
+            import win32gui
+            hwnd = win32gui.GetForegroundWindow()
+            if hwnd:
+                return win32gui.GetWindowText(hwnd).lower()
+        except:
+            pass
+    return ""
+
+def focus_violation_event(domain):
+    try:
+        notification.notify(
+            title='🚫 Focus Violation',
+            message=f'{domain} is blocked during Focus Mode. Get back to work!',
+            app_name='DigiWell',
+            timeout=5
+        )
+        show_break_screen(duration_seconds=10, message=f"🚫 {domain} is blocked during Focus Mode.\\nStay focused!")
+    except:
+        pass
+
 def poll_focus_sessions():
     """Poll DB for scheduled focus sessions and start them via focus_mode"""
     try:

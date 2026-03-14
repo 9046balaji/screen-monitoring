@@ -1,1 +1,1 @@
-{"active": false, "session_name": "Start Today's Commitment", "duration_minutes": 60, "started_at": "2026-03-13T20:00:17.264547", "ends_at": "2026-03-13T21:00:17.264547", "block_list": ["discord.exe", "slack.exe", "WhatsApp.exe", "Telegram.exe", "steam.exe"], "apps_killed": []}
+{"active": false, "session_name": "Today's CBT Commitment", "duration_minutes": 60, "started_at": "2026-03-13T20:15:22.470535", "ends_at": "2026-03-13T21:15:22.470535", "block_list": ["discord.exe", "slack.exe", "WhatsApp.exe", "Telegram.exe", "steam.exe"], "apps_killed": []}

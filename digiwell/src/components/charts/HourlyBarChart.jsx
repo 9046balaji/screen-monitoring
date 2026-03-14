@@ -1,7 +1,29 @@
+import React, { useEffect, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { motion } from 'framer-motion';
+import { getHourlyUsage } from '../../api/digiwell';
 
-export default function HourlyBarChart({ data, delay = 0 }) {
+export default function HourlyBarChart({ data: initialData, delay = 0 }) {
+  const [data, setData] = useState(initialData || []);
+
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        const res = await getHourlyUsage();
+        if (res && res.length > 0) {
+          const formatted = res.map(d => ({
+            hour: `${d.hour}:00`,
+            minutes: Math.round(d.total_seconds / 60)
+          }));
+          setData(formatted);
+        }
+      } catch (e) {
+        console.error("Failed to load hourly usage", e);
+      }
+    }
+    fetchData();
+  }, []);
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}

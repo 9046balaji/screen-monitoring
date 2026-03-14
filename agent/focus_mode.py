@@ -6,6 +6,9 @@ import threading
 from plyer import notification
 from datetime import datetime, timedelta
 
+from website_blocker import block_websites, unblock_websites, get_blocked_list_from_config
+from enforcer import focus_violation_event, get_active_window_text
+
 FOCUS_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'focus_session.json')
 
 # Default list of distracting apps to block during focus
@@ -17,12 +20,13 @@ DEFAULT_BLOCK_LIST = [
 _focus_active = False
 _focus_thread = None
 
-def start_focus_session(duration_minutes=25, block_list=None, session_name="Focus Session"):
+def start_focus_session(duration_minutes=25, block_list=None, session_name="Focus Session", block_categories=None):
     global _focus_active, _focus_thread
     if _focus_active:
         return {"status": "already_running"}
 
     block = block_list or DEFAULT_BLOCK_LIST
+    categories = block_categories if block_categories is not None else ["social", "video", "entertainment"]
     end_time = datetime.now() + timedelta(minutes=duration_minutes)
 
     session = {
@@ -32,10 +36,14 @@ def start_focus_session(duration_minutes=25, block_list=None, session_name="Focu
         "started_at": datetime.now().isoformat(),
         "ends_at": end_time.isoformat(),
         "block_list": block,
+        "block_categories": categories,
         "apps_killed": []
     }
     _save_session(session)
     _focus_active = True
+    
+    blocked_domains = get_blocked_list_from_config(categories)
+    block_websites(blocked_domains)
 
     notification.notify(
         title=f'🎯 Focus Mode ON — {session_name}',
@@ -48,6 +56,14 @@ def start_focus_session(duration_minutes=25, block_list=None, session_name="Focu
         global _focus_active
         while _focus_active and datetime.now() < end_time:
             block_bases = [b.lower().replace('.exe', '') for b in block]
+            
+            # Check window titles for blocked domains
+            active_title = get_active_window_text()
+            for domain in blocked_domains:
+                if domain in active_title:
+                    focus_violation_event(domain)
+                    break # trigger once per cycle
+
             for proc in psutil.process_iter(['name', 'pid']):
                 try:
                     p_name = proc.info['name'].lower()
@@ -79,6 +95,7 @@ def start_focus_session(duration_minutes=25, block_list=None, session_name="Focu
         _focus_active = False
         session['active'] = False
         _save_session(session)
+        unblock_websites()
         notification.notify(
             title='✅ Focus Session Complete!',
             message=f'Great work! {session_name} is done. Take a 5-minute break.',
@@ -96,6 +113,7 @@ def stop_focus_session():
     session = _load_session()
     session['active'] = False
     _save_session(session)
+    unblock_websites()
     notification.notify(
         title='Focus Mode Ended',
         message='You ended your focus session early.',

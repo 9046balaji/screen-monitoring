@@ -21,6 +21,8 @@ export default function FocusMode() {
   const [sessionName, setSessionName] = useState('Deep Work')
   const [duration, setDuration] = useState(25)
   const [blockedApps, setBlockedApps] = useState(COMMON_APPS.map(a => a.id).slice(0, 5)) // Pre-select first 5
+  const [blockedCategories, setBlockedCategories] = useState(['social', 'video', 'entertainment']) // Website blocking categories
+
   
   const [remainingTime, setRemainingTime] = useState(null)
   const [aiRecommendation, setAiRecommendation] = useState(null)
@@ -87,9 +89,15 @@ export default function FocusMode() {
     )
   }
 
+  const handleToggleCategory = (cat) => {
+    setBlockedCategories(prev => 
+      prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]
+    )
+  }
+
   const handleStart = async () => {
     if (!sessionName) return
-    await startFocus({ session_name: sessionName, duration_minutes: duration, block_list: blockedApps })
+    await startFocus({ session_name: sessionName, duration_minutes: duration, block_list: blockedApps, block_categories: blockedCategories })
     fetchStatus()
   }
 
@@ -195,6 +203,30 @@ export default function FocusMode() {
                     {d}m
                   </button>
                 ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm text-slate-600 dark:text-slate-400 mb-2">Websites to Block</label>
+              <div className="flex flex-col gap-2">
+                {[
+                  { id: 'social', label: 'Block Social Media (Instagram, Twitter, etc.)' },
+                  { id: 'video', label: 'Block Video Platforms (YouTube, TikTok)' },
+                  { id: 'entertainment', label: 'Block Entertainment (Netflix, Hulu)' }
+                ].map(cat => {
+                  const isBlocked = blockedCategories.includes(cat.id);
+                  return (
+                    <label key={cat.id} className="flex items-center gap-3 p-2 border border-slate-200 dark:border-slate-700 rounded-lg cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800">
+                      <input 
+                        type="checkbox" 
+                        checked={isBlocked} 
+                        onChange={() => handleToggleCategory(cat.id)}
+                        className="w-4 h-4 text-emerald-600 rounded bg-slate-100 border-slate-300 focus:ring-emerald-500"
+                      />
+                      <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{cat.label}</span>
+                    </label>
+                  );
+                })}
               </div>
             </div>
 
